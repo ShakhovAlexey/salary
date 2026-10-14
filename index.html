@@ -192,117 +192,87 @@ function baseType(t) {
   return t;
 }
 
-function calcShift(type, isSabbath, rate) {
+// ── Параметры смен: старт (час суток), длительность, класс тарифа ──────────
+// Класс определяет базовый коэффициент по номеру отработанного часа:
+//   morning (старт до 14:00): 1-8ч 100%, 9-10ч 125%, 11+ч 150%
+//   day     (вечерняя):       1-8ч 117.5%, 9-10ч 125%, 11+ч 150%
+//   night:                    1-7ч 140%, 8-9ч 175%, 10+ч 210%
+// В шабат (пт с 17:00 до сб 17:00) коэффициент удваивается: 100→200, 117.5→235,
+// 125→250, 140→280, 150→300, 175→350, 210→420 (проверено по табелям июнь-август).
+const SHIFT_SPEC = {
+  morning:   { start: 6,   hours: 8,  cls: "morning" },
+  morning12: { start: 6,   hours: 12, cls: "morning" },
+  day:       { start: 14,  hours: 8,  cls: "day" },
+  day12:     { start: 9.5, hours: 12, cls: "morning" },   // по табелям: вход ~09:30, тариф как у утра
+  night8:    { start: 22,  hours: 8,  cls: "night" },
+  night12:   { start: 22,  hours: 12, cls: "night" }
+};
+const SHABBAT_START = 17;          // пятница, час суток
+const SHABBAT_END   = 24 + 17;     // суббота 17:00, часов от полуночи пятницы
+
+function baseCoef(cls, workedHours) {
+  if (cls === "night") return workedHours < 7 ? 140 : (workedHours < 9 ? 175 : 210);
+  const first = cls === "day" ? 117.5 : 100;
+  return workedHours < 8 ? first : (workedHours < 10 ? 125 : 150);
+}
+
+// kind: false | "fri" | "sat" — на какой день недели начинается смена
+function calcShift(type, kind, rate) {
   rate = rate || HOURLY_RATE;
   if (type === "off" || !type) return { total: 0, breakdown: [] };
+  if (kind === true) kind = "sat";
   const def = SHIFT_TYPES[type];
-  const isTor     = def && def.group === "torranuta";
-  // sabMode: true if it's a sabbath day OR a torranuta-on-sabbath type
-  
+  const isTor = def && def.group === "torranuta";
   const base = baseType(type);
-  const h = (def && def.hours) || 0;
+  const spec = SHIFT_SPEC[base];
+  if (!spec) return { total: 0, breakdown: [] };
+
+  // считаем по получасовым отрезкам
+  const groups = {};   // ключ: pct|shab → часы
+  const order = [];
+  const STEP = 0.5;
+  for (let k = 0; k < spec.hours / STEP; k++) {
+    const worked = k * STEP;
+    const clock = spec.start + worked + STEP / 2;      // середина отрезка
+    let shab = false;
+    if (kind === "fri") shab = clock >= SHABBAT_START && clock < SHABBAT_END;
+    else if (kind === "sat") shab = clock < SHABBAT_START;
+    const pct = baseCoef(spec.cls, worked) * (shab ? 2 : 1);
+    const gk = pct + "|" + (shab ? 1 : 0);
+    if (!(gk in groups)) { groups[gk] = { pct: pct, shab: shab, hrs: 0 }; order.push(gk); }
+    groups[gk].hrs += STEP;
+  }
   const breakdown = [];
   let total = 0;
-  const add = (label, hrs, pct) => {
-    if (hrs <= 0) return;
-    const sum = Math.round(hrs * rate * pct / 100 * 100) / 100;
-    breakdown.push({ label: label, hrs: hrs, pct: pct, sum: sum });
+  order.forEach(function (gk) {
+    const g = groups[gk];
+    const sum = Math.round(g.hrs * rate * g.pct / 100 * 100) / 100;
+    breakdown.push({
+      label: (g.shab ? "✡️ שבת " : "") + g.pct + "%",
+      hrs: g.hrs, pct: g.pct, sum: sum
+    });
     total += sum;
-  };
+  });
 
-  // ── ТОРРАНУТА: коэффициенты базовой смены (обычной/шабатной) + отдельная
-  // надбавка (коды 132/133/134/136 = 50/58.8/70/117.5%) за 8ч × ставка.
-  // Процент выбирается в настройках (правило выбора кода в листках не выводится однозначно).
+  // ── ТОРРАНУТА: надбавка (коды 132/133/134/136 = 50/58.8/70/117.5%) за 8ч × ставка.
   if (isTor) {
-    const baseRes = calcShift(base, isSabbath, rate);
-    baseRes.breakdown.forEach(function (r) { breakdown.push(r); });
-    total = baseRes.total;
-    const torPct = (typeof state !== "undefined" && state.torPct) ? state.torPct : 58.8;
+    // Авто: код надбавки зависит от смены: утро 50%, вечер 58.8%, ночь 70%,
+    // шабат (сб до 17:00 / пт ночь) 117.5% — по листкам июня-августа
+    let autoPct = spec.cls === "night" ? 70 : (spec.cls === "day" ? 58.8 : 50);
+    if ((kind === "sat" && spec.start < SHABBAT_START) || (kind === "fri" && spec.start >= SHABBAT_START)) autoPct = 117.5;
+    const manual = (typeof state !== "undefined" && state.torAuto === false);
+    const torPct = manual ? (state.torPct || 58.8) : autoPct;
     const torBonus = Math.round(8 * rate * torPct / 100 * 100) / 100;
     breakdown.push({ label: "⚡ Тор. надбавка (" + torPct + "%×8ч)", hrs: 8, pct: torPct, sum: torBonus });
     total += torBonus;
-    return { total: Math.round(total*100)/100, breakdown: breakdown };
   }
-
-  // ── ШАБАТ (обычный, без торрануты) ────────────────────────────────
-  // Из листков июня/июля/августа:
-  // night8:    7ч×235% + 1ч×280%
-  // night12:   7ч×235% + 2.5ч×280% + 2.5ч×350%
-  // morning:   8ч×200%
-  // morning12: смешанная смена (09:28-22:09) захватывает разные зоны шабата:
-  //            2ч×200% + 3ч×235% + 2ч×280% + 2ч×350% + 3ч×420%
-  //            420% = шабат+ночь+максимальный овертайм (новый код из августа)
-  // day:       4ч×200% + 4ч×235%  (или 5ч+3ч в зависимости от времени)
-  // day12:     4ч×200% + 4ч×235% + 2ч×280% + 2ч×350%
-  if (isSabbath) {
-    if (base === "night8") {
-      add("שבת לילה 7ч (235%)",      7, 235);
-      add("שבת עמ' 1ч (280%)",       1, 280);
-    } else if (base === "night12") {
-      add("שבת לילה 7ч (235%)",      7, 235);
-      add("שבת עמ' 2.5ч (280%)",   2.5, 280);
-      add("שבת עמ' 2.5ч (350%)",   2.5, 350);
-    } else if (base === "morning") {
-      add("שבת בוקר 06-14 (200%)",   8, 200);
-    } else if (base === "morning12") {
-      // Из табеля 01.08: смешанная 12ч шабат
-      // 2ч×200% + 3ч×235% + 2ч×280% + 2ч×350% + 3ч×420%
-      add("שבת בוקר (200%)",         2, 200);
-      add("שבת אחה\"צ (235%)",        3, 235);
-      add("שבת עמ' 1-2 (280%)",      2, 280);
-      add("שבת עמ' 3-4 (350%)",      2, 350);
-      add("שבת לילה (420%)",         3, 420);
-    } else if (base === "day") {
-      add("שבת יום 14-18 (200%)",    4, 200);
-      add("שבת ערב 18-22 (235%)",    4, 235);
-    } else if (base === "day12") {
-      add("שבת יום 14-18 (200%)",    4, 200);
-      add("שבת ערב 18-22 (235%)",    4, 235);
-      add("שבת עמ' 1-2 (280%)",      2, 280);
-      add("שבת עמ' 3-4 (350%)",      2, 350);
-    }
-    return { total: Math.round(total*100)/100, breakdown: breakdown };
-  }
-
-  // ── ОБЫЧНЫЕ СМЕНЫ ─────────────────────────────────────────────────
-  // Из листка (реальные коэффициенты проверены):
-  //   morning 8ч:   8ч×100% = 352₪ ✅ (код 100)
-  //   morning 12ч:  8ч×100% + 2ч×125% + 2ч×150%
-  //   day 8ч:       4ч×100% + 4ч×135% = 413.6₪ ✅ (код 101: 352×117.5%)
-  //   day 12ч:      4ч×100% + 4ч×135% + 2ч×175% + 2ч×210%
-  //   night 8ч:     7ч×140% + 1ч×175% = 431.2+77 = 508.2₪
-  //                 Но код 104: 308×140%=431.2₪ = только 7ч×140%
-  //                 Вероятно 8ч-ночная = 7ч×140% (в коде 104) + 1ч в отдельном коде
-  //   night 12ч:    7ч×140% + 2.5ч×175% + 2.5ч×210%
-  if (base === "morning") {
-    add("רגיל 06-14 (100%)",        8,   100);
-  } else if (base === "morning12") {
-    add("רגיל 06-14 (100%)",        8,   100);
-    add("עמ' 1-2ש (125%)",          2,   125);
-    add("עמ' 3-4ש (150%)",          2,   150);
-  } else if (base === "day") {
-    add("רגיל 14-18 (100%)",        4,   100);
-    add("ערב 18-22 (135%)",         4,   135);
-  } else if (base === "day12") {
-    add("רגיל 14-18 (100%)",        4,   100);
-    add("ערב 18-22 (135%)",         4,   135);
-    add("עמ' 1-2ש (125%)",          2,   125); // дневные овертайм код 107
-    add("עמ' 3-4ש (150%)",          2,   150); // дневные овертайм код 108
-  } else if (base === "night8") {
-    add("לילה 7ч (140%)",           7,   140);
-    add("עמ' 1ч (175%)",            1,   175);
-  } else if (base === "night12") {
-    add("לילה 7ч (140%)",           7,   140);
-    add("עמ' 2.5ч (175%)",        2.5,   175);
-    add("עמ' 2.5ч (210%)",        2.5,   210);
-  }
-
   return { total: Math.round(total*100)/100, breakdown: breakdown };
 }
 
 const HE_DAYS = ["вс","пн","вт","ср","чт","пт","сб"];
 const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 function isSabbath(y,m,d){ return new Date(y,m,d).getDay()===6; }
+function shabKind(y,m,d){ const w = new Date(y,m,d).getDay(); return w===5 ? "fri" : (w===6 ? "sat" : false); }
 function getDaysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
 function getFirstDay(y,m){ return new Date(y,m,1).getDay(); }
 
@@ -320,7 +290,7 @@ function saveData() {
       year: state.year, month: state.month, shifts: state.shifts,
       hourlyRate: state.hourlyRate, creditPoints: state.creditPoints,
       includePension: state.includePension, premium: state.premium,
-      nofHagalil: state.nofHagalil, torPct: state.torPct,
+      nofHagalil: state.nofHagalil, torPct: state.torPct, torAuto: state.torAuto,
       cycleTemplate: state.cycleTemplate
     }));
   } catch (e) {}
@@ -338,6 +308,7 @@ const state = {
   nofHagalil: saved.nofHagalil !== undefined ? saved.nofHagalil : true,
   premium: saved.premium !== undefined ? saved.premium : 0,
   torPct: saved.torPct !== undefined ? saved.torPct : 58.8,
+  torAuto: saved.torAuto !== undefined ? saved.torAuto : true,
   // Cycle schedule template: array of {count, type, isOff}
   cycleTemplate: saved.cycleTemplate || [
     { count: 6, type: "morning",  isOff: false },
@@ -369,7 +340,7 @@ function computeStats() {
     const sh = getShift(d);
     if (sh.type === "off") continue;
     const sab = isSabbath(state.year, state.month, d);
-    const r = calcShift(sh.type, sab, state.hourlyRate);
+    const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
     const h = (SHIFT_TYPES[sh.type] && SHIFT_TYPES[sh.type].hours) || 0;
     totalGross += r.total; totalHours += h; workDays++;
     const wn = Math.ceil((d+firstDay)/7);
@@ -459,7 +430,7 @@ function renderAutoModal() {
     { value:"morning",     label:"🌅 Утро 8ч (06-14)" },
     { value:"morning12",   label:"🌅 Утро 12ч (06-18)" },
     { value:"day",         label:"☀️ День 8ч (14-22)" },
-    { value:"day12",       label:"☀️ День 12ч (14-02)" },
+    { value:"day12",       label:"☀️ День 12ч (09:30-22:00)" },
     { value:"night8",      label:"🌙 Ночь 8ч (22-06)" },
     { value:"night12",     label:"🌙 Ночь 12ч (22-10)" },
     { value:"tor_morning", label:"⚡ Тор. Утро 8ч" },
@@ -692,7 +663,7 @@ function render() {
     for (let d=1; d<=daysInMonth; d++) {
       const sh = getShift(d);
       const sab = isSabbath(state.year, state.month, d);
-      const r = calcShift(sh.type, sab, state.hourlyRate);
+      const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
       const isSel = state.selected.has(d);
       const def = SHIFT_TYPES[sh.type];
       const isTorDay = def && (def.group === "torranuta");
@@ -735,7 +706,7 @@ function render() {
     if (singleDay) {
       const selShift = getShift(singleDay);
       const selSab = isSabbath(state.year, state.month, singleDay);
-      const selCalc = calcShift(selShift.type, selSab, state.hourlyRate);
+      const selCalc = calcShift(selShift.type, shabKind(state.year, state.month, singleDay), state.hourlyRate);
       const isTorSel = SHIFT_TYPES[selShift.type] && (SHIFT_TYPES[selShift.type].group === "torranuta");
 
       const panel = el("div", { class:"day-panel", style: isTorSel ? "border-color:#7c3aed" : "" });
@@ -831,7 +802,7 @@ function render() {
       const sh = getShift(d);
       if (sh.type === "off") continue;
       const sab = isSabbath(state.year, state.month, d);
-      const r = calcShift(sh.type, sab, state.hourlyRate);
+      const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
       const dow = HE_DAYS[new Date(state.year, state.month, d).getDay()];
       const tor = SHIFT_TYPES[sh.type] && (SHIFT_TYPES[sh.type].group === "torranuta");
       const card = el("div", { class:"day-card", style:"border-left-color:" + (sab?"#f59e0b":(tor?"#7c3aed":"#3b82f6")) });
@@ -934,10 +905,15 @@ function render() {
     // Torranuta surcharge %
     const torCard = el("div", { class:"settings-card" });
     torCard.appendChild(el("div", { class:"title", text:"⚡ Надбавка торрануты (8ч × ставка)" }));
+    torCard.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:6px", text:"Авто: утро 50%, вечер 58.8%, ночь 70%, шабат 117.5%" }));
     const torRow = el("div", { style:"display:flex;gap:6px;flex-wrap:wrap" });
+    const optAuto = el("button", { class:"toggle-btn" + (state.torAuto?" on":""), style:"flex:1;justify-content:center", text:"Авто" });
+    optAuto.addEventListener("click", function () { state.torAuto = true; saveData(); render(); });
+    torRow.appendChild(optAuto);
     [50, 58.8, 70, 117.5].forEach(function (pc) {
-      const b = el("button", { class:"toggle-btn" + (state.torPct===pc?" on":""), style:"flex:1;justify-content:center", text: pc + "%" });
-      b.addEventListener("click", function () { state.torPct = pc; saveData(); render(); });
+      const on = !state.torAuto && state.torPct === pc;
+      const b = el("button", { class:"toggle-btn" + (on?" on":""), style:"flex:1;justify-content:center", text: pc + "%" });
+      b.addEventListener("click", function () { state.torAuto = false; state.torPct = pc; saveData(); render(); });
       torRow.appendChild(b);
     });
     torCard.appendChild(torRow);
