@@ -147,23 +147,33 @@
 <script>
 // ───────────────────────── CONFIG ─────────────────────────
 const HOURLY_RATE = 44;
-const DEFAULT_CREDIT_POINTS = 8.25;
-const POINT_VALUE_2026 = 242;
-const PENSION_RATE = 0.06;
-const KEHESH_RATE  = 0.025;
-const NOF_HAGALIL_RATE = 0.12;    // 12% скидка жителей Ноф-ха-Галиль
-const NOF_HAGALIL_CEILING = 18880; // максимальная база для скидки
+const DEFAULT_CREDIT_POINTS = 2.25;   // для нового пользователя: гражданин-мужчина; своё значение — из листка
+const POINT_VALUE_2026 = 242;         // ₪ в месяц за 1 балл
+const DEFAULT_PENSION_PCT = 6;        // пенсия, % с оплаты за смены
+const DEFAULT_KEHESH_PCT  = 2.5;      // керен иштальмут, %
+const NOF_HAGALIL_RATE = 0.12;        // скидка жителей Ноф-ха-Галиль (пресет)
+const NOF_HAGALIL_CEILING_YEAR = 226560; // годовой потолок дохода для скидки (пресет)
+const PENSION_CREDIT_RATE = 0.35;     // зачёт по ст. 45א с взносов работника
 const STORAGE_KEY = "salary_calc_v1";
 
-function calcIncomeTax(g, creditPts, nofHagalil) {
-  let raw = 0;
-  if (g <= 7010) raw = g * 0.10;
-  else if (g <= 10060) raw = 7010*0.10 + (g-7010)*0.14;
-  else if (g <= 19000) raw = 7010*0.10 + 3050*0.14 + (g-10060)*0.20;
-  else raw = 7010*0.10 + 3050*0.14 + 8940*0.20 + (g-19000)*0.31;
-  const pointsShield = (creditPts || DEFAULT_CREDIT_POINTS) * POINT_VALUE_2026;
-  const nofShield = nofHagalil ? Math.min(g, NOF_HAGALIL_CEILING) * NOF_HAGALIL_RATE : 0;
-  return Math.max(0, raw - pointsShield - nofShield);
+// Ступени подоходного налога 2026 (трудовой доход): [верхняя граница, ставка]
+const BRACKETS_MONTH = [[7010,.10],[10060,.14],[19000,.20],[25100,.31],[46690,.35],[Infinity,.47]];
+const BRACKETS_YEAR  = [[84120,.10],[120720,.14],[228000,.20],[301200,.31],[560280,.35],[Infinity,.47]];
+function bracketTax(g, table) {
+  let prev = 0, t = 0;
+  for (let i = 0; i < table.length; i++) {
+    const lim = table[i][0], r = table[i][1];
+    if (g > prev) t += (Math.min(g, lim) - prev) * r;
+    prev = lim;
+  }
+  return t;
+}
+// Подоходный налог за месяц: ступени − баллы − скидка жителя − зачёт за пенсию
+function calcIncomeTax(g, creditPts, benefitOn, benefitPct, benefitCeilMonth, pensionCredit) {
+  const raw = bracketTax(g, BRACKETS_MONTH);
+  const pts = (Number(creditPts) || 0) * POINT_VALUE_2026;
+  const ben = benefitOn ? Math.min(g, benefitCeilMonth) * (benefitPct / 100) : 0;
+  return Math.max(0, raw - pts - ben - (pensionCredit || 0));
 }
 function calcBituachLeumi(g) {
   const t = 7522;
@@ -290,7 +300,9 @@ function saveData() {
       year: state.year, month: state.month, shifts: state.shifts,
       hourlyRate: state.hourlyRate, creditPoints: state.creditPoints,
       includePension: state.includePension, premium: state.premium,
-      nofHagalil: state.nofHagalil, torPct: state.torPct, torAuto: state.torAuto,
+      nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
+      pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
+      torPct: state.torPct, torAuto: state.torAuto,
       cycleTemplate: state.cycleTemplate
     }));
   } catch (e) {}
@@ -305,7 +317,13 @@ const state = {
   hourlyRate: saved.hourlyRate !== undefined ? saved.hourlyRate : HOURLY_RATE,
   creditPoints: saved.creditPoints !== undefined ? saved.creditPoints : DEFAULT_CREDIT_POINTS,
   includePension: saved.includePension !== undefined ? saved.includePension : true,
-  nofHagalil: saved.nofHagalil !== undefined ? saved.nofHagalil : true,
+  // Скидка жителя: у существующих пользователей (Ноф-ха-Галиль) сохраняется, у новых выключена
+  nofHagalil: saved.nofHagalil !== undefined ? saved.nofHagalil : false,
+  benefitPct: saved.benefitPct !== undefined ? saved.benefitPct : 12,
+  benefitCeilYear: saved.benefitCeilYear !== undefined ? saved.benefitCeilYear : NOF_HAGALIL_CEILING_YEAR,
+  pensionPct: saved.pensionPct !== undefined ? saved.pensionPct : DEFAULT_PENSION_PCT,
+  keheshPct: saved.keheshPct !== undefined ? saved.keheshPct : DEFAULT_KEHESH_PCT,
+  pensionCreditOn: saved.pensionCreditOn !== undefined ? saved.pensionCreditOn : (saved.creditPoints === undefined),
   premium: saved.premium !== undefined ? saved.premium : 0,
   torPct: saved.torPct !== undefined ? saved.torPct : 58.8,
   torAuto: saved.torAuto !== undefined ? saved.torAuto : true,
@@ -353,17 +371,39 @@ function computeStats() {
 function computeNet(stats) {
   const shiftsGross = stats.totalGross;
   const gross = shiftsGross + (Number(state.premium) || 0);
-  const pension = state.includePension ? shiftsGross * PENSION_RATE : 0;
-  const kehesh  = state.includePension ? shiftsGross * KEHESH_RATE  : 0;
+  const pension = state.includePension ? shiftsGross * (Number(state.pensionPct)||0) / 100 : 0;
+  const kehesh  = state.includePension ? shiftsGross * (Number(state.keheshPct)||0) / 100 : 0;
   const bituach = calcBituachLeumi(gross);
-  const incomeTax = calcIncomeTax(gross, state.creditPoints, state.nofHagalil);
+  const pensionCredit = (state.includePension && state.pensionCreditOn) ? pension * PENSION_CREDIT_RATE : 0;
+  const ceilMonth = (Number(state.benefitCeilYear)||0) / 12;
+  const incomeTax = calcIncomeTax(gross, state.creditPoints, state.nofHagalil, Number(state.benefitPct)||0, ceilMonth, pensionCredit);
   const totalDeductions = incomeTax + bituach + pension + kehesh;
   const net = Math.max(0, gross - totalDeductions);
-  // For display: breakdown of shields
-  const rawTax = (function(g){ if(g<=7010) return g*0.10; if(g<=10060) return 7010*0.10+(g-7010)*0.14; if(g<=19000) return 7010*0.10+3050*0.14+(g-10060)*0.20; return 7010*0.10+3050*0.14+8940*0.20+(g-19000)*0.31; })(gross);
-  const pointsShield = state.creditPoints * POINT_VALUE_2026;
-  const nofShield = state.nofHagalil ? Math.min(gross, NOF_HAGALIL_CEILING) * NOF_HAGALIL_RATE : 0;
-  return { shiftsGross, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, totalDeductions, net };
+  const rawTax = bracketTax(gross, BRACKETS_MONTH);
+  const pointsShield = (Number(state.creditPoints)||0) * POINT_VALUE_2026;
+  const nofShield = state.nofHagalil ? Math.min(gross, ceilMonth) * (Number(state.benefitPct)||0) / 100 : 0;
+  return { shiftsGross, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, pensionCredit, totalDeductions, net };
+}
+
+// Годовой прогноз налога по всем введённым месяцам года (годовые ступени)
+function computeYear() {
+  const m0 = state.month;
+  let T = 0, months = 0, monthlySum = 0, pensionSum = 0;
+  try {
+    for (let m = 0; m < 12; m++) {
+      state.month = m;
+      const st = computeStats();
+      if (st.workDays === 0) continue;
+      const n = computeNet(st);
+      T += n.gross; monthlySum += n.incomeTax; pensionSum += n.pension; months++;
+    }
+  } finally { state.month = m0; }
+  const raw = bracketTax(T, BRACKETS_YEAR);
+  const pts = (Number(state.creditPoints)||0) * POINT_VALUE_2026 * 12;
+  const ben = state.nofHagalil ? Math.min(T, Number(state.benefitCeilYear)||0) * (Number(state.benefitPct)||0) / 100 : 0;
+  const pc = (state.includePension && state.pensionCreditOn) ? pensionSum * PENSION_CREDIT_RATE : 0;
+  const tax = Math.max(0, raw - pts - ben - pc);
+  return { T, months, tax, monthlySum };
 }
 
 // ───────────────────────── CYCLE SCHEDULE ─────────────────────────
@@ -859,8 +899,8 @@ function render() {
     netCard.appendChild(netRow(incomeTaxLabel, incomeTaxVal, incomeTaxColor, false, "net-tax"));
     netCard.appendChild(netRow("Битуах Леуми + Мас Бриут", "-" + Math.round(netCalc.bituach).toLocaleString() + " ₪", "#fb7185", false, "net-bituach"));
     if (state.includePension) {
-      netCard.appendChild(netRow("Пенсия (6%)", "-" + Math.round(netCalc.pension).toLocaleString() + " ₪", "#fbbf24", false, "net-pension"));
-      netCard.appendChild(netRow("Керен иштальмут (2.5%)", "-" + Math.round(netCalc.kehesh).toLocaleString() + " ₪", "#fbbf24", false, "net-kehesh"));
+      netCard.appendChild(netRow("Пенсия (" + state.pensionPct + "%)", "-" + Math.round(netCalc.pension).toLocaleString() + " ₪", "#fbbf24", false, "net-pension"));
+      netCard.appendChild(netRow("Керен иштальмут (" + state.keheshPct + "%)", "-" + Math.round(netCalc.kehesh).toLocaleString() + " ₪", "#fbbf24", false, "net-kehesh"));
     }
     const totalDedRow = el("div", { class:"net-row", style:"padding-top:6px;border-top:1px solid #1e3a2f" });
     totalDedRow.appendChild(el("span", { text:"Всего вычетов", style:"color:#cbd5e1;font-weight:700" }));
@@ -869,17 +909,29 @@ function render() {
 
     wrap.appendChild(netCard);
 
+    // Annual projection card
+    const yr = computeYear();
+    const annual = el("div", { class:"settings-card" });
+    annual.appendChild(el("div", { class:"title", text:"📆 Годовой прогноз налога" }));
+    annual.appendChild(el("div", { id:"yr-note", style:"font-size:11px;color:#475569;margin-bottom:8px", text:"По введённым месяцам года: " + yr.months + ". Премия — одна и та же в каждом месяце." }));
+    const yrRow = (lab, id, val) => { const r = el("div", { class:"net-row" }); r.appendChild(el("span", { text: lab, style:"color:#94a3b8" })); r.appendChild(el("span", { id: id, text: val, style:"color:#e2e8f0;font-weight:600" })); return r; };
+    annual.appendChild(yrRow("Доход за год (брутто)", "yr-gross", Math.round(yr.T).toLocaleString() + " ₪"));
+    annual.appendChild(yrRow("Налог по годовым ступеням", "yr-tax", Math.round(yr.tax).toLocaleString() + " ₪"));
+    annual.appendChild(yrRow("Сумма месячных расчётов", "yr-monthly", Math.round(yr.monthlySum).toLocaleString() + " ₪"));
+    annual.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:6px", text:"Разница показывает возможную доплату или возврат по итогам года. Учитывайте, что оценка приблизительная." }));
+    wrap.appendChild(annual);
+
     // Tax settings
     const taxSettings = el("div", { class:"settings-card" });
     taxSettings.appendChild(el("div", { class:"title", text:"⚙️ Параметры расчёта налогов" }));
-    taxSettings.appendChild(el("div", { class:"field-label", text:"Налоговые баллы (некудот зикуй)" }));
-    const cpInput = el("input", { type:"number", step:"0.25", class:"num-input", value: state.creditPoints, id:"cp-input" });
-    cpInput.addEventListener("input", (e) => {
-      state.creditPoints = Number(e.target.value);
-      saveData();
-      updateNetDisplay();
-    });
-    taxSettings.appendChild(cpInput);
+    taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:10px", text:"Баллы, скидку и пенсию берите из своего расчётного листка (раздел «нисуй мас» / «некудот зикуй»)." }));
+    const numField = (label, value, step, onInput, id) => {
+      taxSettings.appendChild(el("div", { class:"field-label", text: label }));
+      const inp = el("input", { type:"number", step: String(step), class:"num-input", value: value, id: id || "" });
+      inp.addEventListener("input", (e) => { onInput(Number(e.target.value)); saveData(); updateNetDisplay(); });
+      taxSettings.appendChild(inp);
+    };
+    numField("Налоговые баллы (некудот зикуй)", state.creditPoints, 0.25, (v) => { state.creditPoints = v; }, "cp-input");
     taxSettings.appendChild(el("div", { id:"cp-shield-label", text:"= " + Math.round(state.creditPoints*POINT_VALUE_2026).toLocaleString() + " ₪ налогового щита/мес", style:"font-size:11px;color:#475569;margin-top:4px;margin-bottom:12px" }));
 
     const pensionToggle = el("button", { class:"toggle-btn" + (state.includePension?" on":"") });
@@ -887,18 +939,34 @@ function render() {
     pensionToggle.appendChild(el("span", { class:"toggle-pill" + (state.includePension?" on":""), text: state.includePension?"ВКЛ":"ВЫКЛ" }));
     pensionToggle.addEventListener("click", () => { state.includePension = !state.includePension; saveData(); render(); });
     taxSettings.appendChild(pensionToggle);
+    if (state.includePension) {
+      numField("Пенсия, % (с оплаты за смены)", state.pensionPct, 0.5, (v) => { state.pensionPct = v; });
+      numField("Керен иштальмут, %", state.keheshPct, 0.5, (v) => { state.keheshPct = v; });
+      const pcToggle = el("button", { class:"toggle-btn" + (state.pensionCreditOn?" on":""), style:"margin-top:8px" });
+      pcToggle.appendChild(el("span", { text:"Зачёт 35% за пенсионные взносы (ст. 45א)" }));
+      pcToggle.appendChild(el("span", { class:"toggle-pill" + (state.pensionCreditOn?" on":""), text: state.pensionCreditOn?"ВКЛ":"ВЫКЛ" }));
+      pcToggle.addEventListener("click", () => { state.pensionCreditOn = !state.pensionCreditOn; saveData(); render(); });
+      taxSettings.appendChild(pcToggle);
+      taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Приблизительно: верхние пределы зачёта не учитываются." }));
+    }
 
-    // Nof HaGalil toggle
-    const nofToggle = el("button", { class:"toggle-btn" + (state.nofHagalil?" on":""), style:"margin-top:8px" });
-    nofToggle.appendChild(el("span", { text:"Скидка жителя Ноф-ха-Галиль (12%)" }));
+    // Residency benefit
+    const nofToggle = el("button", { class:"toggle-btn" + (state.nofHagalil?" on":""), style:"margin-top:12px" });
+    nofToggle.appendChild(el("span", { text:"Налоговая скидка жителя населённого пункта" }));
     nofToggle.appendChild(el("span", { class:"toggle-pill" + (state.nofHagalil?" on":""), text: state.nofHagalil?"ВКЛ":"ВЫКЛ" }));
     nofToggle.addEventListener("click", () => { state.nofHagalil = !state.nofHagalil; saveData(); render(); });
     taxSettings.appendChild(nofToggle);
     if (state.nofHagalil) {
+      numField("Скидка, % от дохода", state.benefitPct, 0.5, (v) => { state.benefitPct = v; });
+      numField("Годовой потолок дохода для скидки, ₪", state.benefitCeilYear, 1000, (v) => { state.benefitCeilYear = v; });
+      const preset = el("button", { class:"toggle-btn", style:"margin-top:8px;justify-content:center", text:"Пресет: Ноф-ха-Галиль (12%, 226 560 ₪/год)" });
+      preset.addEventListener("click", () => { state.nofHagalil = true; state.benefitPct = 12; state.benefitCeilYear = NOF_HAGALIL_CEILING_YEAR; saveData(); render(); });
+      taxSettings.appendChild(preset);
       taxSettings.appendChild(el("div", {
-        text: "Щит некудот: " + Math.round(netCalc.pointsShield) + "₪ + Ноф-ха-Галиль: " + Math.round(netCalc.nofShield) + "₪ = итого " + Math.round(netCalc.pointsShield + netCalc.nofShield) + "₪",
+        text: "Щит некудот: " + Math.round(netCalc.pointsShield) + "₪ + скидка: " + Math.round(netCalc.nofShield) + "₪ = итого " + Math.round(netCalc.pointsShield + netCalc.nofShield) + "₪",
         style:"font-size:11px;color:#475569;margin-top:6px"
       }));
+      taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Для другого города возьмите процент и потолок из списка на сайте налоговой." }));
     }
     wrap.appendChild(taxSettings);
 
@@ -938,7 +1006,8 @@ function render() {
       if (confirm("Удалить все сохранённые смены и настройки?")) {
         localStorage.removeItem(STORAGE_KEY);
         state.shifts = {}; state.premium = 0; state.hourlyRate = HOURLY_RATE;
-        state.creditPoints = DEFAULT_CREDIT_POINTS; state.includePension = true;
+        state.creditPoints = DEFAULT_CREDIT_POINTS; state.includePension = true; state.nofHagalil = false;
+        state.pensionPct = DEFAULT_PENSION_PCT; state.keheshPct = DEFAULT_KEHESH_PCT; state.pensionCreditOn = true;
         render();
       }
     }});
@@ -981,6 +1050,10 @@ function updateNetDisplay() {
   setTxt("net-deductions","-" + Math.round(net.totalDeductions).toLocaleString() + " ₪");
   setTxt("bottom-gross",  "брутто " + Math.round(net.gross).toLocaleString() + " ₪");
   setTxt("bottom-net",    Math.round(net.net).toLocaleString() + " ₪ нетто");
+  const y = computeYear();
+  setTxt("yr-gross", Math.round(y.T).toLocaleString() + " ₪");
+  setTxt("yr-tax", Math.round(y.tax).toLocaleString() + " ₪");
+  setTxt("yr-monthly", Math.round(y.monthlySum).toLocaleString() + " ₪");
   setTxt("cp-shield-label","= " + Math.round(state.creditPoints*POINT_VALUE_2026).toLocaleString() + " ₪ налогового щита/мес");
 }
 
