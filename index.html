@@ -175,10 +175,12 @@ function calcIncomeTax(g, creditPts, benefitOn, benefitPct, benefitCeilMonth, pe
   const ben = benefitOn ? Math.min(g, benefitCeilMonth) * (benefitPct / 100) : 0;
   return Math.max(0, raw - pts - ben - (pensionCredit || 0));
 }
+// Битуах Леуми + мас бриут (работник), 2026: до 7 703 ₪ — 1.04%+3.23%, выше — 7%+5.17% (сверено с листком за июнь)
+const BL_THRESHOLD = 7703;
 function calcBituachLeumi(g) {
-  const t = 7522;
-  if (g <= t) return g * 0.035;
-  return t*0.035 + (g-t)*0.12;
+  const t = BL_THRESHOLD;
+  if (g <= t) return g * 0.0427;
+  return t*0.0427 + (g-t)*0.1217;
 }
 
 const SHIFT_TYPES = {
@@ -247,13 +249,14 @@ function calcShift(type, kind, rate) {
     let shab = false;
     if (kind === "fri") shab = clock >= SHABBAT_START && clock < SHABBAT_END;
     else if (kind === "sat") shab = clock < SHABBAT_START;
+    const basePct = baseCoef(spec.cls, 0) * (shab ? 2 : 1);
     const pct = baseCoef(spec.cls, worked) * (shab ? 2 : 1);
     const gk = pct + "|" + (shab ? 1 : 0);
-    if (!(gk in groups)) { groups[gk] = { pct: pct, shab: shab, hrs: 0 }; order.push(gk); }
+    if (!(gk in groups)) { groups[gk] = { pct: pct, shab: shab, hrs: 0, reg: pct === basePct }; order.push(gk); }
     groups[gk].hrs += STEP;
   }
   const breakdown = [];
-  let total = 0;
+  let total = 0, regular = 0;
   order.forEach(function (gk) {
     const g = groups[gk];
     const sum = Math.round(g.hrs * rate * g.pct / 100 * 100) / 100;
@@ -262,6 +265,7 @@ function calcShift(type, kind, rate) {
       hrs: g.hrs, pct: g.pct, sum: sum
     });
     total += sum;
+    if (g.reg) regular += sum;
   });
 
   // ── ТОРРАНУТА: надбавка (коды 132/133/134/136 = 50/58.8/70/117.5%) за 8ч × ставка.
@@ -276,9 +280,15 @@ function calcShift(type, kind, rate) {
     breakdown.push({ label: "⚡ Тор. надбавка (" + torPct + "%×8ч)", hrs: 8, pct: torPct, sum: torBonus });
     total += torBonus;
   }
-  return { total: Math.round(total*100)/100, breakdown: breakdown };
+  return { total: Math.round(total*100)/100, regular: Math.round(regular*100)/100, breakdown: breakdown };
 }
 
+function migratePremiums() {
+  if (state.premiums) return;
+  state.premiums = {};
+  Object.keys(state.shifts).forEach(k => { const ym = k.slice(0,7); if (!(ym in state.premiums)) state.premiums[ym] = Number(state.premium) || 0; });
+  saveData();
+}
 const HE_DAYS = ["вс","пн","вт","ср","чт","пт","сб"];
 const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 function isSabbath(y,m,d){ return new Date(y,m,d).getDay()===6; }
@@ -300,6 +310,7 @@ function saveData() {
       year: state.year, month: state.month, shifts: state.shifts,
       hourlyRate: state.hourlyRate, creditPoints: state.creditPoints,
       includePension: state.includePension, premium: state.premium,
+      premiums: state.premiums, extras: state.extras, zkifot: state.zkifot,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -325,6 +336,9 @@ const state = {
   keheshPct: saved.keheshPct !== undefined ? saved.keheshPct : DEFAULT_KEHESH_PCT,
   pensionCreditOn: saved.pensionCreditOn !== undefined ? saved.pensionCreditOn : (saved.creditPoints === undefined),
   premium: saved.premium !== undefined ? saved.premium : 0,
+  premiums: saved.premiums || null,
+  extras: saved.extras || {},
+  zkifot: saved.zkifot !== undefined ? saved.zkifot : 0,
   torPct: saved.torPct !== undefined ? saved.torPct : 58.8,
   torAuto: saved.torAuto !== undefined ? saved.torAuto : true,
   // Cycle schedule template: array of {count, type, isOff}
@@ -346,13 +360,24 @@ const state = {
 };
 
 function key(d) { return state.year + "-" + String(state.month+1).padStart(2,"0") + "-" + String(d).padStart(2,"0"); }
+// Курсор в конец поля при фокусе (удобно править число)
+function caretToEnd(inp) {
+  inp.addEventListener("focus", () => setTimeout(() => {
+    try { const n = inp.value.length; inp.setSelectionRange(n, n); } catch (e) {}
+  }, 0));
+}
+const toNum = (v) => Number(String(v).replace(",", ".")) || 0;
+function ymKey() { return state.year + "-" + String(state.month+1).padStart(2,"0"); }
+// Премия и разовые выплаты — свои для каждого месяца
+function getPremium() { const v = state.premiums[ymKey()]; return v !== undefined ? (Number(v)||0) : (Number(state.premium)||0); }
+function getExtras() { return Number(state.extras[ymKey()]) || 0; }
 function getShift(d) { return state.shifts[key(d)] || { type: "off" }; }
 function setShiftDay(d, type) { state.shifts[key(d)] = { type: type }; saveData(); }
 
 function computeStats() {
   const daysInMonth = getDaysInMonth(state.year, state.month);
   const firstDay = getFirstDay(state.year, state.month);
-  let totalGross=0, totalHours=0, workDays=0;
+  let totalGross=0, totalHours=0, workDays=0, regularPay=0;
   const weekly = {};
   for (let d=1; d<=daysInMonth; d++) {
     const sh = getShift(d);
@@ -360,29 +385,34 @@ function computeStats() {
     const sab = isSabbath(state.year, state.month, d);
     const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
     const h = (SHIFT_TYPES[sh.type] && SHIFT_TYPES[sh.type].hours) || 0;
-    totalGross += r.total; totalHours += h; workDays++;
+    totalGross += r.total; regularPay += r.regular || 0; totalHours += h; workDays++;
     const wn = Math.ceil((d+firstDay)/7);
     if (!weekly[wn]) weekly[wn] = { gross:0, hours:0, days:0 };
     weekly[wn].gross += r.total; weekly[wn].hours += h; weekly[wn].days++;
   }
-  return { totalGross: Math.round(totalGross*100)/100, totalHours, workDays, weekly };
+  return { totalGross: Math.round(totalGross*100)/100, regularPay: Math.round(regularPay*100)/100, totalHours, workDays, weekly };
 }
 
 function computeNet(stats) {
   const shiftsGross = stats.totalGross;
-  const gross = shiftsGross + (Number(state.premium) || 0);
-  const pension = state.includePension ? shiftsGross * (Number(state.pensionPct)||0) / 100 : 0;
-  const kehesh  = state.includePension ? shiftsGross * (Number(state.keheshPct)||0) / 100 : 0;
-  const bituach = calcBituachLeumi(gross);
+  const premium = getPremium(), extras = getExtras();
+  const gross = shiftsGross + premium + extras;
+  const zkifot = Number(state.zkifot) || 0;      // условные начисления: облагаются, но не выплачиваются
+  const taxBase = gross + zkifot;
+  // По листку: пенсия — с обычной оплаты смен (без переработки и надбавок) + премия; керен — только с обычной оплаты
+  const regular = stats.regularPay !== undefined ? stats.regularPay : shiftsGross;
+  const pension = state.includePension ? (regular + premium) * (Number(state.pensionPct)||0) / 100 : 0;
+  const kehesh  = state.includePension ? regular * (Number(state.keheshPct)||0) / 100 : 0;
+  const bituach = calcBituachLeumi(taxBase);
   const pensionCredit = (state.includePension && state.pensionCreditOn) ? pension * PENSION_CREDIT_RATE : 0;
   const ceilMonth = (Number(state.benefitCeilYear)||0) / 12;
-  const incomeTax = calcIncomeTax(gross, state.creditPoints, state.nofHagalil, Number(state.benefitPct)||0, ceilMonth, pensionCredit);
+  const incomeTax = calcIncomeTax(taxBase, state.creditPoints, state.nofHagalil, Number(state.benefitPct)||0, ceilMonth, pensionCredit);
   const totalDeductions = incomeTax + bituach + pension + kehesh;
   const net = Math.max(0, gross - totalDeductions);
-  const rawTax = bracketTax(gross, BRACKETS_MONTH);
+  const rawTax = bracketTax(taxBase, BRACKETS_MONTH);
   const pointsShield = (Number(state.creditPoints)||0) * POINT_VALUE_2026;
-  const nofShield = state.nofHagalil ? Math.min(gross, ceilMonth) * (Number(state.benefitPct)||0) / 100 : 0;
-  return { shiftsGross, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, pensionCredit, totalDeductions, net };
+  const nofShield = state.nofHagalil ? Math.min(taxBase, ceilMonth) * (Number(state.benefitPct)||0) / 100 : 0;
+  return { shiftsGross, premium, extras, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, pensionCredit, totalDeductions, net };
 }
 
 // Годовой прогноз налога по всем введённым месяцам года (годовые ступени)
@@ -395,7 +425,7 @@ function computeYear() {
       const st = computeStats();
       if (st.workDays === 0) continue;
       const n = computeNet(st);
-      T += n.gross; monthlySum += n.incomeTax; pensionSum += n.pension; months++;
+      T += n.gross + (Number(state.zkifot)||0); monthlySum += n.incomeTax; pensionSum += n.pension; months++;
     }
   } finally { state.month = m0; }
   const raw = bracketTax(T, BRACKETS_YEAR);
@@ -870,9 +900,13 @@ function render() {
       const row = el("div", { class:"net-row" });
       row.appendChild(el("span", { text: label, style:"color:#94a3b8" }));
       if (isInput) {
-        const input = el("input", { type:"number", class:"premium-input", value: state.premium, placeholder:"0" });
+        const isExtra = isInput === "extras";
+        const cur = isExtra ? getExtras() : getPremium();
+        const input = el("input", { type:"text", inputmode:"decimal", class:"premium-input", value: cur ? String(cur) : "", placeholder:"0" });
+        caretToEnd(input);
         input.addEventListener("input", (e) => {
-          state.premium = e.target.value;
+          const v = Number(String(e.target.value).replace(",", ".")) || 0;
+          if (isExtra) state.extras[ymKey()] = v; else state.premiums[ymKey()] = v;
           saveData();
           updateNetDisplay();
         });
@@ -884,7 +918,8 @@ function render() {
     }
 
     netCard.appendChild(netRow("Брутто за смены (без премии)", Math.round(netCalc.shiftsGross).toLocaleString() + " ₪", "#e2e8f0", false, "net-shifts"));
-    netCard.appendChild(netRow("Премия", null, null, true));
+    netCard.appendChild(netRow("Премия (этот месяц)", null, null, true));
+    netCard.appendChild(netRow("Разовые выплаты (бонусы, пособия)", null, null, "extras"));
     const grossTotalRow = el("div", { class:"net-row", style:"padding-top:6px;border-top:1px dashed #134e3a" });
     grossTotalRow.appendChild(el("span", { text:"Брутто всего", style:"color:#cbd5e1;font-weight:600" }));
     grossTotalRow.appendChild(el("span", { id:"net-gross", text: Math.round(netCalc.gross).toLocaleString() + " ₪", style:"color:#e2e8f0;font-weight:700" }));
@@ -913,7 +948,7 @@ function render() {
     const yr = computeYear();
     const annual = el("div", { class:"settings-card" });
     annual.appendChild(el("div", { class:"title", text:"📆 Годовой прогноз налога" }));
-    annual.appendChild(el("div", { id:"yr-note", style:"font-size:11px;color:#475569;margin-bottom:8px", text:"По введённым месяцам года: " + yr.months + ". Премия — одна и та же в каждом месяце." }));
+    annual.appendChild(el("div", { id:"yr-note", style:"font-size:11px;color:#475569;margin-bottom:8px", text:"По введённым месяцам года: " + yr.months + ". Премия и разовые выплаты — по каждому месяцу." }));
     const yrRow = (lab, id, val) => { const r = el("div", { class:"net-row" }); r.appendChild(el("span", { text: lab, style:"color:#94a3b8" })); r.appendChild(el("span", { id: id, text: val, style:"color:#e2e8f0;font-weight:600" })); return r; };
     annual.appendChild(yrRow("Доход за год (брутто)", "yr-gross", Math.round(yr.T).toLocaleString() + " ₪"));
     annual.appendChild(yrRow("Налог по годовым ступеням", "yr-tax", Math.round(yr.tax).toLocaleString() + " ₪"));
@@ -927,10 +962,13 @@ function render() {
     taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:10px", text:"Баллы, скидку и пенсию берите из своего расчётного листка (раздел «нисуй мас» / «некудот зикуй»)." }));
     const numField = (label, value, step, onInput, id) => {
       taxSettings.appendChild(el("div", { class:"field-label", text: label }));
-      const inp = el("input", { type:"number", step: String(step), class:"num-input", value: value, id: id || "" });
-      inp.addEventListener("input", (e) => { onInput(Number(e.target.value)); saveData(); updateNetDisplay(); });
+      const inp = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: value, id: id || "" });
+      caretToEnd(inp);
+      inp.addEventListener("input", (e) => { onInput(toNum(e.target.value)); saveData(); updateNetDisplay(); });
       taxSettings.appendChild(inp);
     };
+    numField("Зкифот (זקיפות: страховка, питание), ₪/мес", state.zkifot, 1, (v) => { state.zkifot = v; });
+    taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px;margin-bottom:12px", text:"Строка «סה״כ זקיפות שכר» в листке. На руки не выплачивается, но с неё берут налог и Битуах Леуми." }));
     numField("Налоговые баллы (некудот зикуй)", state.creditPoints, 0.25, (v) => { state.creditPoints = v; }, "cp-input");
     taxSettings.appendChild(el("div", { id:"cp-shield-label", text:"= " + Math.round(state.creditPoints*POINT_VALUE_2026).toLocaleString() + " ₪ налогового щита/мес", style:"font-size:11px;color:#475569;margin-top:4px;margin-bottom:12px" }));
 
@@ -991,9 +1029,10 @@ function render() {
     const rateSettings = el("div", { class:"settings-card" });
     rateSettings.appendChild(el("div", { class:"title", text:"⚙️ Часовая ставка" }));
     const rateRow = el("div", { style:"display:flex;gap:8px;align-items:center" });
-    const rateInput = el("input", { type:"number", class:"num-input", value: state.hourlyRate, style:"flex:1" });
+    const rateInput = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: state.hourlyRate, style:"flex:1" });
+    caretToEnd(rateInput);
     rateInput.addEventListener("input", (e) => {
-      state.hourlyRate = Number(e.target.value);
+      state.hourlyRate = toNum(e.target.value);
       saveData();
     });
     rateInput.addEventListener("change", () => render());
@@ -1005,7 +1044,7 @@ function render() {
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
       if (confirm("Удалить все сохранённые смены и настройки?")) {
         localStorage.removeItem(STORAGE_KEY);
-        state.shifts = {}; state.premium = 0; state.hourlyRate = HOURLY_RATE;
+        state.shifts = {}; state.premium = 0; state.premiums = {}; state.extras = {}; state.hourlyRate = HOURLY_RATE;
         state.creditPoints = DEFAULT_CREDIT_POINTS; state.includePension = true; state.nofHagalil = false;
         state.pensionPct = DEFAULT_PENSION_PCT; state.keheshPct = DEFAULT_KEHESH_PCT; state.pensionCreditOn = true;
         render();
@@ -1060,6 +1099,7 @@ function updateNetDisplay() {
 // Lightweight refresh (legacy, kept for compatibility)
 function refreshNetCardOnly() { updateNetDisplay(); }
 
+migratePremiums();
 render();
 </script>
 
