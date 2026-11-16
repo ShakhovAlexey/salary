@@ -661,18 +661,12 @@ function render() {
   // ── HEADER ──
   const header = el("div", { class:"header" });
   const headerTop = el("div", { class:"header-top" });
-  headerTop.appendChild(el("button", { class:"nav-btn", text:"‹", onclick: () => {
-    if (state.month===0){ state.year--; state.month=11; } else state.month--;
-    state.selected = new Set(); saveData(); render();
-  }}));
+  headerTop.appendChild(el("button", { class:"nav-btn", text:"‹", onclick: () => changeMonth(-1) }));
   const titleBox = el("div", { class:"month-title" });
   titleBox.appendChild(el("div", { class:"name", text: MONTHS_RU[state.month] + " " + state.year }));
   titleBox.appendChild(el("div", { class:"rate", text: "Ставка: " + state.hourlyRate + " ₪/ч" }));
   headerTop.appendChild(titleBox);
-  headerTop.appendChild(el("button", { class:"nav-btn", text:"›", onclick: () => {
-    if (state.month===11){ state.year++; state.month=0; } else state.month++;
-    state.selected = new Set(); saveData(); render();
-  }}));
+  headerTop.appendChild(el("button", { class:"nav-btn", text:"›", onclick: () => changeMonth(1) }));
   header.appendChild(headerTop);
 
   const tabs = el("div", { class:"tabs" });
@@ -1132,7 +1126,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 7" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 8" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1192,6 +1186,34 @@ function updateNetDisplay() {
 
 // Lightweight refresh (legacy, kept for compatibility)
 function refreshNetCardOnly() { updateNetDisplay(); }
+
+// ── Смена месяца: стрелки и свайп влево/вправо по экрану ──
+function changeMonth(dir) {
+  state.month += dir;
+  if (state.month < 0) { state.year--; state.month = 11; }
+  if (state.month > 11) { state.year++; state.month = 0; }
+  state.selected = new Set(); saveData(); render();
+  const app = document.getElementById("app");
+  if (app && app.animate) app.animate(
+    [{ transform: "translateX(" + (dir > 0 ? 40 : -40) + "px)", opacity: 0.4 }, { transform: "translateX(0)", opacity: 1 }],
+    { duration: 180, easing: "ease-out" });
+}
+(function () {
+  let x0 = null, y0 = 0, t0 = 0;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.target;
+    if (e.touches.length !== 1 || state.showAutoModal || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+  }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+    x0 = null;
+    if (Date.now() - t0 > 700) return;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    changeMonth(dx < 0 ? 1 : -1);   // свайп влево — следующий месяц
+  }, { passive: true });
+})();
 
 migratePremiums();
 render();
