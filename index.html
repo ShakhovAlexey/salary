@@ -48,6 +48,34 @@
   .day-headers { display:grid; grid-template-columns:repeat(7,1fr); padding:8px 6px 2px; }
   .day-header { text-align:center; font-size:11px; color:#475569; font-weight:600; padding-bottom:4px; }
 
+  .cal-wrap { display:grid; grid-template-columns:18px repeat(7,1fr); gap:3px; padding:0 4px; }
+  .cal-dh { text-align:center; font-size:11px; color:#64748b; font-weight:600; padding:6px 0 2px; }
+  .wk-no { font-size:10px; color:#475569; display:flex; align-items:center; justify-content:center; }
+  .cell2 { border-radius:8px; padding:3px 4px 4px; min-height:88px; cursor:pointer; overflow:hidden; color:#fff; position:relative; border:2px solid transparent; }
+  .cell2 .top { display:flex; justify-content:space-between; align-items:center; }
+  .cell2 .n { font-size:17px; font-weight:800; line-height:1.1; }
+  .cell2 .ic { font-size:10px; opacity:.9; }
+  .cell2 .sl { font-size:11px; font-weight:700; line-height:1.15; margin-top:1px; }
+  .cell2 .am { font-size:10px; opacity:.85; }
+  .cell2 .nt { margin-top:3px; font-size:10px; line-height:1.15; background:rgba(0,0,0,.3); border-radius:4px; padding:2px 3px; word-break:break-word;
+               display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+  .cell2.off { color:#64748b; } .cell2.off .sl { font-weight:400; font-size:10px; }
+  .cell2.today { border-color:#34d399; }
+  .cell2.sel { border-color:#22d3ee; transform:scale(.93); }
+  .cell2.tor { border-color:#c4b5fd; }
+  .msum { display:flex; gap:6px; padding:8px 6px 4px; }
+  .msum div { flex:1; background:#1e293b; border-radius:9px; padding:5px 7px; font-size:10px; color:#64748b; }
+  .msum b { display:block; font-size:14px; color:#e2e8f0; } .msum .nn b { color:#34d399; }
+  .legend2 { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; font-size:11px; color:#94a3b8; padding:10px 6px; }
+  .legend2 i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+  .sheet-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .schip { padding:9px 11px; border-radius:9px; font-size:13px; font-weight:600; background:#0f172a; color:#cbd5e1; border:2px solid transparent; cursor:pointer; }
+  .schip.on { border-color:#818cf8; color:#fff; }
+  .note-ta { width:100%; min-height:70px; background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px; font-size:15px; color:#e2e8f0; font-family:inherit; resize:vertical; }
+  .qtags { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .qtag { font-size:12px; background:#0f172a; border-radius:14px; padding:6px 11px; color:#94a3b8; cursor:pointer; border:none; }
+  .sheet-btns { display:flex; gap:8px; margin-top:14px; }
+  .sheet-btns button { flex:1; padding:12px; border-radius:10px; border:none; font-weight:700; font-size:15px; cursor:pointer; }
   .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; padding:0 6px; }
   .cal-cell { border-radius:10px; padding:5px 3px; cursor:pointer; min-height:64px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; border:2px solid transparent; transition:transform .1s; }
   .cal-cell .num { font-size:12px; font-weight:700; color:#e2e8f0; }
@@ -184,19 +212,19 @@ function calcBituachLeumi(g) {
 }
 
 const SHIFT_TYPES = {
-  morning:          { label: "🌅 Утро 8ч",            hours: 8,  group: "regular",   color:"#b45309" },
-  morning12:        { label: "🌅 Утро 12ч",           hours: 12, group: "regular",   color:"#92400e" },
-  day:              { label: "☀️ День 8ч",            hours: 8,  group: "regular",   color:"#1d4ed8" },
-  day12:            { label: "☀️ День 12ч",           hours: 12, group: "regular",   color:"#1e3a8a" },
-  night8:           { label: "🌙 Ночь 8ч",            hours: 8,  group: "regular",   color:"#1f2937" },
-  night12:          { label: "🌙 Ночь 12ч",           hours: 12, group: "regular",   color:"#111827" },
-  tor_morning:      { label: "⚡ Тор. Утро 8ч",       hours: 8,  group: "torranuta", color:"#6d28d9" },
-  tor_morning12:    { label: "⚡ Тор. Утро 12ч",      hours: 12, group: "torranuta", color:"#5b21b6" },
-  tor_day:          { label: "⚡ Тор. День 8ч",       hours: 8,  group: "torranuta", color:"#6d28d9" },
-  tor_day12:        { label: "⚡ Тор. День 12ч",      hours: 12, group: "torranuta", color:"#5b21b6" },
-  tor_night8:       { label: "⚡ Тор. Ночь 8ч",       hours: 8,  group: "torranuta", color:"#4c1d95" },
-  tor_night12:      { label: "⚡ Тор. Ночь 12ч",      hours: 12, group: "torranuta", color:"#3b0764" },
-  off:              { label: "🔴 Выходной",             hours: 0,  group: "off",       color:"#374151" },
+  morning:          { label: "🌅 Утро 8ч",            hours: 8,  group: "regular",   color:"#ea580c" },
+  morning12:        { label: "🌅 Утро 12ч",           hours: 12, group: "regular",   color:"#c2410c" },
+  day:              { label: "☀️ День 8ч",            hours: 8,  group: "regular",   color:"#2563eb" },
+  day12:            { label: "☀️ День 12ч",           hours: 12, group: "regular",   color:"#1d4ed8" },
+  night8:           { label: "🌙 Ночь 8ч",            hours: 8,  group: "regular",   color:"#3730a3" },
+  night12:          { label: "🌙 Ночь 12ч",           hours: 12, group: "regular",   color:"#312e81" },
+  tor_morning:      { label: "⚡ Тор. Утро 8ч",       hours: 8,  group: "torranuta", color:"#ea580c" },
+  tor_morning12:    { label: "⚡ Тор. Утро 12ч",      hours: 12, group: "torranuta", color:"#c2410c" },
+  tor_day:          { label: "⚡ Тор. День 8ч",       hours: 8,  group: "torranuta", color:"#2563eb" },
+  tor_day12:        { label: "⚡ Тор. День 12ч",      hours: 12, group: "torranuta", color:"#1d4ed8" },
+  tor_night8:       { label: "⚡ Тор. Ночь 8ч",       hours: 8,  group: "torranuta", color:"#3730a3" },
+  tor_night12:      { label: "⚡ Тор. Ночь 12ч",      hours: 12, group: "torranuta", color:"#312e81" },
+  off:              { label: "🔴 Выходной",             hours: 0,  group: "off",       color:"#1e293b" },
 };
 
 function baseType(t) {
@@ -311,6 +339,7 @@ function saveData() {
       hourlyRate: state.hourlyRate, creditPoints: state.creditPoints,
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot,
+      notes: state.notes, noteTags: state.noteTags,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -354,6 +383,9 @@ const state = {
   cycleStartDay: 1, // 1-based day of current month to start from
   view: "calendar",
   multiMode: false,
+  sheetDay: null, sheetType: null, sheetNote: "", showBreakdown: false,
+  notes: saved.notes || {},
+  noteTags: saved.noteTags || ["ПД", "Созвон", "Врач"],
   selected: new Set(),
   bulkDropOpen: false,
   dayDropOpen: false,
@@ -718,114 +750,58 @@ function render() {
 
   // ── CALENDAR VIEW ──
   if (state.view === "calendar") {
-    const dayHeaders = el("div", { class:"day-headers" });
-    HE_DAYS.forEach(d => dayHeaders.appendChild(el("div", { class:"day-header", text:d })));
-    app.appendChild(dayHeaders);
+    // сводка месяца
+    const ms = el("div", { class:"msum" });
+    [["Смен", stats.workDays], ["Часов", stats.totalHours], ["Брутто", Math.round(netCalc.gross).toLocaleString() + " ₪"], ["Нетто", Math.round(netCalc.net).toLocaleString() + " ₪"]]
+      .forEach((p, i) => { const d = el("div", { class: i===3 ? "nn" : "" }); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { text: String(p[1]) })); ms.appendChild(d); });
+    app.appendChild(ms);
 
-    const grid = el("div", { class:"cal-grid" });
-    for (let i=0; i<firstDay; i++) grid.appendChild(el("div"));
-    for (let d=1; d<=daysInMonth; d++) {
-      const sh = getShift(d);
-      const sab = isSabbath(state.year, state.month, d);
-      const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
-      const isSel = state.selected.has(d);
-      const def = SHIFT_TYPES[sh.type];
-      const isTorDay = def && (def.group === "torranuta");
-
-      let borderColor = "transparent";
-      if (isSel) borderColor = "#22d3ee";
-      else if (sab) borderColor = "#f59e0b";
-      else if (isTorDay) borderColor = "#7c3aed";
-
-      const cell = el("div", {
-        class: "cal-cell",
-        style: "background:" + ((def && def.color) || "#374151") + ";border-color:" + borderColor +
-               (isSel ? ";transform:scale(0.91)" : ""),
-        onclick: () => {
-          if (!state.multiMode) {
-            if (state.selected.has(d) && state.selected.size===1) state.selected = new Set();
-            else state.selected = new Set([d]);
-          } else {
-            if (state.selected.has(d)) state.selected.delete(d); else state.selected.add(d);
-          }
-          render();
-        }
-      });
-      cell.appendChild(el("div", { class:"num", text: (isSel && state.multiMode ? "✓":"") + d,
-        style: "color:" + (sab?"#fbbf24":(isSel?"#22d3ee":"#e2e8f0")) }));
-      if (sh.type !== "off") {
-        const shortLabel = def.label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim().split(" ").slice(0,2).join(" ");
-        cell.appendChild(el("div", { class:"lbl", text: (isTorDay?"⚡":"") + shortLabel,
-          style: "color:" + (isTorDay?"#c4b5fd":"#94a3b8") }));
-        cell.appendChild(el("div", { class:"sum", text: r.total + "₪" }));
-      } else {
-        cell.appendChild(el("div", { class:"dash", text:"—" }));
+    const grid = el("div", { class:"cal-wrap" });
+    grid.appendChild(el("div"));
+    HE_DAYS.forEach((d, i) => grid.appendChild(el("div", { class:"cal-dh", text:d, style: i===6 ? "color:#fbbf24" : "" })));
+    const now = new Date();
+    const isCur = now.getFullYear()===state.year && now.getMonth()===state.month;
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    for (let c = 0; c < totalCells; c++) {
+      if (c % 7 === 0) {
+        const rowSun = new Date(state.year, state.month, c - firstDay + 1);
+        grid.appendChild(el("div", { class:"wk-no", text: String(isoWeek(rowSun)) }));
       }
+      const d = c - firstDay + 1;
+      if (d < 1 || d > daysInMonth) { grid.appendChild(el("div")); continue; }
+      const sh = getShift(d);
+      const def = SHIFT_TYPES[sh.type] || SHIFT_TYPES.off;
+      const isTor = def.group === "torranuta";
+      const sat = isSabbath(state.year, state.month, d);
+      const note = state.notes[key(d)] || "";
+      const isSel = state.multiMode && state.selected.has(d);
+      const cls = "cell2" + (sh.type==="off" ? " off" : "") + (isCur && now.getDate()===d ? " today" : "") + (isSel ? " sel" : "") + (isTor && !isSel ? " tor" : "");
+      const cell = el("div", { class: cls, style: "background:" + def.color, onclick: () => {
+        if (state.multiMode) { if (state.selected.has(d)) state.selected.delete(d); else state.selected.add(d); render(); }
+        else openSheet(d);
+      }});
+      const top = el("div", { class:"top" });
+      top.appendChild(el("span", { class:"n", text: (isSel ? "✓" : "") + d, style: sat && sh.type==="off" ? "color:#fbbf24" : (sat ? "color:#fde68a" : "") }));
+      if (note) top.appendChild(el("span", { class:"ic", text:"✎" }));
+      cell.appendChild(top);
+      if (sh.type !== "off") {
+        const short = def.label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim();
+        cell.appendChild(el("div", { class:"sl", text: (isTor ? "⚡" : "") + short }));
+        const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
+        cell.appendChild(el("div", { class:"am", text: Math.round(r.total).toLocaleString() + " ₪" }));
+      } else {
+        cell.appendChild(el("div", { class:"sl", text:"вых." }));
+      }
+      if (note) cell.appendChild(el("div", { class:"nt", text: note }));
       grid.appendChild(cell);
     }
     app.appendChild(grid);
 
-    // Single day panel
-    const singleDay = (!state.multiMode && state.selected.size===1) ? [...state.selected][0] : null;
-    if (singleDay) {
-      const selShift = getShift(singleDay);
-      const selSab = isSabbath(state.year, state.month, singleDay);
-      const selCalc = calcShift(selShift.type, shabKind(state.year, state.month, singleDay), state.hourlyRate);
-      const isTorSel = SHIFT_TYPES[selShift.type] && (SHIFT_TYPES[selShift.type].group === "torranuta");
-
-      const panel = el("div", { class:"day-panel", style: isTorSel ? "border-color:#7c3aed" : "" });
-      const headRow = el("div", { class:"day-panel-head" });
-      const titleText = singleDay + " " + MONTHS_RU[state.month] + (selSab ? " ✡️ Шабат" : "") + (isTorSel ? " ⚡" : "");
-      headRow.appendChild(el("div", { class:"day-panel-title", text: titleText }));
-      headRow.appendChild(el("button", { class:"close-btn", text:"✕", onclick: () => { state.selected = new Set(); render(); } }));
-      panel.appendChild(headRow);
-
-      panel.appendChild(el("div", { class:"field-label", text:"Тип смены:" }));
-      const selectBtn = el("button", { class:"shift-select-btn",
-        style: isTorSel ? "border-color:#7c3aed" : "" });
-      selectBtn.appendChild(el("span", { text: (SHIFT_TYPES[selShift.type] && SHIFT_TYPES[selShift.type].label) || "Выбери смену" }));
-      selectBtn.appendChild(el("span", { text: state.dayDropOpen?"▲":"▼", style:"color:#64748b;font-size:12px" }));
-      selectBtn.addEventListener("click", (e) => { e.stopPropagation(); state.dayDropOpen = !state.dayDropOpen; render(); });
-      panel.appendChild(selectBtn);
-
-      if (state.dayDropOpen) {
-        const dd = el("div", { class:"dropdown" });
-        dd.appendChild(renderShiftDropdownItems((type) => {
-          setShiftDay(singleDay, type);
-          state.dayDropOpen = false;
-          render();
-        }, selShift.type));
-        // position relative to button wrapper
-        const wrapper = el("div", { style:"position:relative" }, [dd]);
-        panel.appendChild(wrapper);
-      }
-
-      if (isTorSel) {
-        const badge = el("div", { class:"tor-badge" });
-        badge.innerHTML = "⚡ Торранута — вся смена по <strong style='color:#a78bfa'>150%</strong>";
-        panel.appendChild(badge);
-      }
-
-      if (selShift.type !== "off" && selCalc.breakdown.length > 0) {
-        const box = el("div", { class:"breakdown-box" });
-        box.appendChild(el("div", { class:"field-label", text:"Детализация:" }));
-        selCalc.breakdown.forEach(b => {
-          const row = el("div", { class:"breakdown-row" });
-          row.appendChild(el("span", { text: b.label, style:"color:#94a3b8" }));
-          const right = el("span", { style:"color:#64748b" });
-          right.innerHTML = b.hrs + "ч×" + b.pct + "%=<strong style='color:#34d399'>" + b.sum + "₪</strong>";
-          row.appendChild(right);
-          box.appendChild(row);
-        });
-        const totalRow = el("div", { class:"breakdown-total" });
-        totalRow.appendChild(el("span", { text:"Итого смена:", style:"font-weight:700;font-size:15px" }));
-        totalRow.appendChild(el("span", { text: selCalc.total + " ₪", style:"font-weight:800;font-size:20px;color:#34d399" }));
-        box.appendChild(totalRow);
-        panel.appendChild(box);
-      }
-
-      app.appendChild(panel);
-    }
+    const lg = el("div", { class:"legend2" });
+    [["#ea580c","Утро"],["#2563eb","День"],["#3730a3","Ночь"],["#1e293b","Выходной"]].forEach(p => {
+      const sp = el("span"); sp.appendChild(el("i", { style:"background:" + p[0] })); sp.appendChild(document.createTextNode(p[1])); lg.appendChild(sp); });
+    lg.appendChild(el("span", { text:"⚡ торанута" })); lg.appendChild(el("span", { text:"✎ заметка" }));
+    app.appendChild(lg);
 
     if (state.multiMode && state.selected.size === 0) {
       app.appendChild(el("div", { class:"hint-box", text:"Нажимай на дни чтобы выбрать, затем назначь смену сразу всем" }));
@@ -1126,13 +1102,13 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 8" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 9" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
       if (confirm("Удалить все сохранённые смены и настройки?")) {
         localStorage.removeItem(STORAGE_KEY);
-        state.shifts = {}; state.premium = 0; state.premiums = {}; state.extras = {}; state.hourlyRate = HOURLY_RATE;
+        state.shifts = {}; state.notes = {}; state.premium = 0; state.premiums = {}; state.extras = {}; state.hourlyRate = HOURLY_RATE;
         state.creditPoints = DEFAULT_CREDIT_POINTS; state.includePension = true; state.nofHagalil = false;
         state.pensionPct = DEFAULT_PENSION_PCT; state.keheshPct = DEFAULT_KEHESH_PCT; state.pensionCreditOn = true;
         render();
@@ -1147,6 +1123,8 @@ function render() {
   if (state.showAutoModal) {
     app.appendChild(renderAutoModal());
   }
+
+  if (state.sheetDay) app.appendChild(renderDaySheet());
 
   // ── BOTTOM BAR ──
   const bottomStats = computeStats();
@@ -1187,6 +1165,91 @@ function updateNetDisplay() {
 // Lightweight refresh (legacy, kept for compatibility)
 function refreshNetCardOnly() { updateNetDisplay(); }
 
+function isoWeek(dt) {
+  const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - y0) / 86400000 + 1) / 7);
+}
+const BASE_CHIPS = [["off","Выходной"],["morning","Утро 8"],["morning12","Утро 12"],["day","День 8"],["day12","День 12"],["night8","Ночь 8"],["night12","Ночь 12"]];
+function openSheet(d) {
+  state.sheetDay = d; state.sheetType = getShift(d).type; state.sheetNote = state.notes[key(d)] || ""; state.showBreakdown = false;
+  render();
+}
+function closeSheet() { state.sheetDay = null; render(); }
+function renderDaySheet() {
+  const d = state.sheetDay;
+  const ov = el("div", { class:"modal-overlay" });
+  ov.addEventListener("click", (e) => { if (e.target === ov) closeSheet(); });
+  const m = el("div", { class:"modal" });
+  m.appendChild(el("div", { style:"width:40px;height:4px;background:#334155;border-radius:2px;margin:0 auto 12px" }));
+  const dt = new Date(state.year, state.month, d);
+  const wd = ["Воскресенье","Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"][dt.getDay()];
+  const mGen = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"][state.month];
+  m.appendChild(el("div", { class:"modal-title", text: wd + ", " + d + " " + mGen + (dt.getDay()===6 ? " ✡️" : "") }));
+  const t = state.sheetType || "off";
+  const r = calcShift(t, shabKind(state.year, state.month, d), state.hourlyRate);
+  const sub = el("div", { class:"modal-sub", style:"cursor:pointer" , text: (t==="off" ? "Выходной" : SHIFT_TYPES[t].label.replace(/🌅|☀️|🌙|🔴/g,"").trim() + " · " + Math.round(r.total).toLocaleString() + " ₪" + (r.breakdown.length ? (state.showBreakdown ? "  ▲" : "  ▼ детали") : "")) });
+  sub.addEventListener("click", () => { state.showBreakdown = !state.showBreakdown; render(); });
+  m.appendChild(sub);
+  if (state.showBreakdown && t !== "off") {
+    const box = el("div", { class:"breakdown-box", style:"margin:-8px 0 12px" });
+    r.breakdown.forEach(b => { const row = el("div", { class:"breakdown-row" });
+      row.appendChild(el("span", { text:b.label, style:"color:#94a3b8" }));
+      row.appendChild(el("span", { text: b.hrs + "ч × " + b.pct + "% = " + b.sum + " ₪", style:"color:#cbd5e1" })); box.appendChild(row); });
+    m.appendChild(box);
+  }
+  m.appendChild(el("div", { class:"field-label", text:"Смена" }));
+  const isTor = t.indexOf("tor_") === 0;
+  const base = isTor ? t.slice(4) : t;
+  const chips = el("div", { class:"sheet-chips" });
+  BASE_CHIPS.forEach(([k, lab]) => {
+    const c = el("button", { class:"schip" + (base===k ? " on" : ""), text: lab, style: k==="off" ? "" : "background:" + SHIFT_TYPES[k].color + ";color:#fff" });
+    c.addEventListener("click", () => { state.sheetType = (isTor && k !== "off") ? "tor_" + k : k; render(); });
+    chips.appendChild(c);
+  });
+  const torC = el("button", { class:"schip" + (isTor ? " on" : ""), text:"⚡ Торанута" + (isTor ? " ✓" : ""), style: isTor ? "background:#6d28d9;color:#fff" : "" });
+  torC.addEventListener("click", () => { if (base === "off") return; state.sheetType = isTor ? base : "tor_" + base; render(); });
+  chips.appendChild(torC);
+  m.appendChild(chips);
+
+  m.appendChild(el("div", { class:"field-label", text:"Заметка" }));
+  const ta = el("textarea", { class:"note-ta", placeholder:"Например: 8:30 врач" });
+  ta.value = state.sheetNote;
+  ta.addEventListener("input", () => { state.sheetNote = ta.value; });
+  m.appendChild(ta);
+  const tags = el("div", { class:"qtags" });
+  state.noteTags.forEach((tg, i) => {
+    const b = el("button", { class:"qtag", text: tg });
+    b.addEventListener("click", () => { state.sheetNote = (state.sheetNote.trim() ? state.sheetNote.trim() + " · " : "") + tg; ta.value = state.sheetNote; });
+    let timer = null;   // долгое нажатие — удалить метку
+    b.addEventListener("touchstart", () => { timer = setTimeout(() => { if (confirm("Удалить метку «" + tg + "»?")) { state.noteTags.splice(i, 1); saveData(); render(); } }, 700); }, { passive:true });
+    b.addEventListener("touchend", () => clearTimeout(timer));
+    tags.appendChild(b);
+  });
+  const add = el("button", { class:"qtag", text:"+ своя метка", style:"color:#34d399" });
+  add.addEventListener("click", () => { const v = (prompt("Новая быстрая метка:") || "").trim(); if (v) { state.noteTags.push(v); saveData(); render(); } });
+  tags.appendChild(add);
+  m.appendChild(tags);
+
+  const btns = el("div", { class:"sheet-btns" });
+  const cancel = el("button", { text:"Отмена", style:"background:#334155;color:#94a3b8" });
+  cancel.addEventListener("click", closeSheet);
+  const save = el("button", { text:"Сохранить", style:"background:#059669;color:#fff" });
+  save.addEventListener("click", () => {
+    const k = key(d);
+    state.shifts[k] = { type: state.sheetType || "off" };
+    const n = state.sheetNote.trim();
+    if (n) state.notes[k] = n; else delete state.notes[k];
+    state.sheetDay = null; saveData(); render();
+  });
+  btns.appendChild(cancel); btns.appendChild(save);
+  m.appendChild(btns);
+  ov.appendChild(m);
+  return ov;
+}
+
 // ── Смена месяца: стрелки и свайп влево/вправо по экрану ──
 function changeMonth(dir) {
   state.month += dir;
@@ -1202,7 +1265,7 @@ function changeMonth(dir) {
   let x0 = null, y0 = 0, t0 = 0;
   document.addEventListener("touchstart", (e) => {
     const t = e.target;
-    if (e.touches.length !== 1 || state.showAutoModal || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
+    if (e.touches.length !== 1 || state.showAutoModal || state.sheetDay || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
   }, { passive: true });
   document.addEventListener("touchend", (e) => {
