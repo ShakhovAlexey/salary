@@ -1045,11 +1045,11 @@ function render() {
     const backup = el("div", { class:"settings-card" });
     backup.appendChild(el("div", { class:"title", text:"💾 Резервная копия / перенос на другой телефон" }));
     backup.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:10px", text:"Сохрани файл на старом телефоне, перешли себе (WhatsApp, Telegram, почта) и загрузи на новом. Там же — смены, премии и все настройки." }));
-    const backupName = () => "salary-backup-" + new Date().toISOString().slice(0,10) + ".json";
+    const backupName = () => "salary-backup-" + new Date().toISOString().slice(0,10) + ".txt";
     const backupJson = () => { saveData(); return localStorage.getItem(STORAGE_KEY) || "{}"; };
     const saveBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"⬇️ Сохранить данные в файл" });
     saveBtn.addEventListener("click", () => {
-      const blob = new Blob([backupJson()], { type:"application/json" });
+      const blob = new Blob([backupJson()], { type:"text/plain" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = backupName();
       document.body.appendChild(a); a.click(); a.remove();
@@ -1057,12 +1057,20 @@ function render() {
     });
     backup.appendChild(saveBtn);
     try {
-      const testFile = new File(["{}"], "t.json", { type:"application/json" });
-      if (navigator.canShare && navigator.canShare({ files:[testFile] })) {
+      if (navigator.share) {
         const shareBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📤 Отправить файл (WhatsApp, Telegram…)" });
         shareBtn.addEventListener("click", () => {
-          const f = new File([backupJson()], backupName(), { type:"application/json" });
-          navigator.share({ files:[f], title:"Калькулятор зарплаты — данные" }).catch(() => {});
+          const f = new File([backupJson()], backupName(), { type:"text/plain" });
+          const fallback = () => saveBtn.click();
+          if (navigator.canShare && !navigator.canShare({ files:[f] })) {
+            alert("Телефон не даёт отправить файл напрямую. Сохраню его в «Загрузки» — отправь оттуда.");
+            fallback(); return;
+          }
+          navigator.share({ files:[f], title:"Калькулятор зарплаты — данные" }).catch((e) => {
+            if (e && e.name === "AbortError") return;
+            alert("Не получилось отправить. Сохраню файл в «Загрузки» — отправь его оттуда.");
+            fallback();
+          });
         });
         backup.appendChild(shareBtn);
       }
