@@ -1041,6 +1041,55 @@ function render() {
     rateSettings.appendChild(rateRow);
     wrap.appendChild(rateSettings);
 
+    // Backup: save / load data file
+    const backup = el("div", { class:"settings-card" });
+    backup.appendChild(el("div", { class:"title", text:"💾 Резервная копия / перенос на другой телефон" }));
+    backup.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:10px", text:"Сохрани файл на старом телефоне, перешли себе (WhatsApp, Telegram, почта) и загрузи на новом. Там же — смены, премии и все настройки." }));
+    const backupName = () => "salary-backup-" + new Date().toISOString().slice(0,10) + ".json";
+    const backupJson = () => { saveData(); return localStorage.getItem(STORAGE_KEY) || "{}"; };
+    const saveBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"⬇️ Сохранить данные в файл" });
+    saveBtn.addEventListener("click", () => {
+      const blob = new Blob([backupJson()], { type:"application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = backupName();
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    });
+    backup.appendChild(saveBtn);
+    try {
+      const testFile = new File(["{}"], "t.json", { type:"application/json" });
+      if (navigator.canShare && navigator.canShare({ files:[testFile] })) {
+        const shareBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📤 Отправить файл (WhatsApp, Telegram…)" });
+        shareBtn.addEventListener("click", () => {
+          const f = new File([backupJson()], backupName(), { type:"application/json" });
+          navigator.share({ files:[f], title:"Калькулятор зарплаты — данные" }).catch(() => {});
+        });
+        backup.appendChild(shareBtn);
+      }
+    } catch (e) {}
+    const fileInp = el("input", { type:"file", accept:".json,application/json,text/plain,*/*", style:"display:none" });
+    fileInp.addEventListener("change", () => {
+      const f = fileInp.files && fileInp.files[0];
+      if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => {
+        let d;
+        try { d = JSON.parse(rd.result); } catch (e) { alert("Это не файл данных калькулятора."); return; }
+        if (!d || typeof d !== "object" || !d.shifts) { alert("В файле нет данных калькулятора."); return; }
+        const n = Object.keys(d.shifts).length;
+        if (!confirm("Загрузить данные из файла (" + n + " смен)? Текущие данные на этом телефоне будут заменены.")) return;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+        location.reload();
+      };
+      rd.readAsText(f);
+      fileInp.value = "";
+    });
+    backup.appendChild(fileInp);
+    const loadBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"⬆️ Загрузить данные из файла" });
+    loadBtn.addEventListener("click", () => fileInp.click());
+    backup.appendChild(loadBtn);
+    wrap.appendChild(backup);
+
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
       if (confirm("Удалить все сохранённые смены и настройки?")) {
         localStorage.removeItem(STORAGE_KEY);
