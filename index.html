@@ -1096,6 +1096,43 @@ function render() {
     const loadBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"⬆️ Загрузить данные из файла" });
     loadBtn.addEventListener("click", () => fileInp.click());
     backup.appendChild(loadBtn);
+
+    // Самый надёжный способ: скопировать данные текстом и вставить на другом телефоне
+    backup.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:12px 0 6px", text:"Если файлы не отправляются — перенеси текстом: «Скопировать», вставь в Telegram/WhatsApp себе, на новом телефоне скопируй это сообщение и нажми «Вставить»." }));
+    const copyBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"📋 Скопировать данные" });
+    copyBtn.addEventListener("click", () => {
+      const txt = backupJson();
+      const ok = () => { copyBtn.textContent = "✅ Скопировано — вставь в сообщение"; setTimeout(() => copyBtn.textContent = "📋 Скопировать данные", 4000); };
+      const legacy = () => {
+        const ta = document.createElement("textarea"); ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        let done = false; try { done = document.execCommand("copy"); } catch (e) {}
+        ta.remove(); if (done) ok(); else alert("Не удалось скопировать.");
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, legacy); else legacy();
+    });
+    backup.appendChild(copyBtn);
+    const pasteBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📥 Вставить данные" });
+    const pasteBox = el("div", { style:"display:none;margin-top:8px" });
+    const pasteTa = el("textarea", { class:"num-input", placeholder:"Нажми и удерживай здесь → Вставить", style:"width:100%;height:90px;box-sizing:border-box;font-size:12px" });
+    const pasteGo = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:6px", text:"✔️ Загрузить вставленные данные" });
+    const importText = (txt) => {
+      let d; const t = String(txt || "").trim(); const i = t.indexOf("{"), j = t.lastIndexOf("}");
+      try { d = JSON.parse(t.slice(i, j + 1)); } catch (e) { alert("Это не данные калькулятора. Скопируй сообщение целиком."); return; }
+      if (!d || typeof d !== "object" || !d.shifts) { alert("В тексте нет данных калькулятора."); return; }
+      if (!confirm("Загрузить данные (" + Object.keys(d.shifts).length + " смен)? Текущие данные на этом телефоне будут заменены.")) return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); location.reload();
+    };
+    pasteBtn.addEventListener("click", () => {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then((t) => { if (t && t.indexOf("shifts") >= 0) importText(t); else { pasteBox.style.display = "block"; pasteTa.focus(); } },
+          () => { pasteBox.style.display = "block"; pasteTa.focus(); });
+      } else { pasteBox.style.display = "block"; pasteTa.focus(); }
+    });
+    pasteGo.addEventListener("click", () => importText(pasteTa.value));
+    pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
+    backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 7" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1162,7 +1199,7 @@ render();
 
 <!-- PWA Service Worker -->
 <script>
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function(){}); }
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function(){}); }
 
 // Показать кнопку "Установить" когда браузер готов
 let deferredPrompt = null;
