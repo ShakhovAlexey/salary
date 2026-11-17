@@ -377,7 +377,7 @@ function saveData() {
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot,
       notes: state.notes, noteTags: state.noteTags,
-      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, maxHours: state.maxHours,
+      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -429,6 +429,7 @@ const state = {
   holidayOverrides: saved.holidayOverrides || {},
   goalNet: saved.goalNet || 0,
   maxHours: saved.maxHours || 240,
+  hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
   showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showForecast: false,
   selected: new Set(),
   bulkDropOpen: false,
@@ -469,10 +470,18 @@ function computeStats() {
   return { totalGross: Math.round(totalGross*100)/100, regularPay: Math.round(regularPay*100)/100, totalHours, workDays, weekly };
 }
 
+// Бонус за часы в месяце: 200–220 ч → 500 ₪, 221–240 ч → 1000 ₪
+function calcHoursBonus(h) {
+  if (state.hoursBonusOn === false) return 0;
+  if (h > 220) return 1000;
+  if (h >= 200) return 500;
+  return 0;
+}
 function computeNet(stats) {
   const shiftsGross = stats.totalGross;
   const premium = getPremium(), extras = getExtras();
-  const gross = shiftsGross + premium + extras;
+  const hoursBonus = calcHoursBonus(stats.totalHours || 0);
+  const gross = shiftsGross + premium + extras + hoursBonus;
   const zkifot = Number(state.zkifot) || 0;      // условные начисления: облагаются, но не выплачиваются
   const taxBase = gross + zkifot;
   // По листку: пенсия — с обычной оплаты смен (без переработки и надбавок) + премия; керен — только с обычной оплаты
@@ -488,7 +497,7 @@ function computeNet(stats) {
   const rawTax = bracketTax(taxBase, BRACKETS_MONTH);
   const pointsShield = (Number(state.creditPoints)||0) * POINT_VALUE_2026;
   const nofShield = state.nofHagalil ? Math.min(taxBase, ceilMonth) * (Number(state.benefitPct)||0) / 100 : 0;
-  return { shiftsGross, premium, extras, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, pensionCredit, totalDeductions, net };
+  return { shiftsGross, premium, extras, hoursBonus, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, pensionCredit, totalDeductions, net };
 }
 
 // Годовой прогноз налога по всем введённым месяцам года (годовые ступени)
@@ -954,6 +963,11 @@ function render() {
     netCard.appendChild(netRow("Брутто за смены (без премии)", Math.round(netCalc.shiftsGross).toLocaleString() + " ₪", "#e2e8f0", false, "net-shifts"));
     netCard.appendChild(netRow("Премия (этот месяц)", null, null, true));
     netCard.appendChild(netRow("Разовые выплаты (бонусы, пособия)", null, null, "extras"));
+    if (state.hoursBonusOn !== false) {
+      const hb = netCalc.hoursBonus, h = stats.totalHours;
+      const hint = hb === 1000 ? "" : (hb === 500 ? " · до 1000 ₪: ещё " + (221 - h) + " ч" : (h > 0 ? " · до 500 ₪: ещё " + (200 - h) + " ч" : ""));
+      netCard.appendChild(netRow("Бонус за часы (" + h + " ч)" + hint, hb.toLocaleString() + " ₪", hb ? "#34d399" : "#64748b"));
+    }
     const grossTotalRow = el("div", { class:"net-row", style:"padding-top:6px;border-top:1px dashed #134e3a" });
     grossTotalRow.appendChild(el("span", { text:"Брутто всего", style:"color:#cbd5e1;font-weight:600" }));
     grossTotalRow.appendChild(el("span", { id:"net-gross", text: Math.round(netCalc.gross).toLocaleString() + " ₪", style:"color:#e2e8f0;font-weight:700" }));
@@ -991,6 +1005,11 @@ function render() {
     const mh = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.maxHours || 240) });
     caretToEnd(mh); mh.addEventListener("input", e => { state.maxHours = toNum(e.target.value) || 240; saveData(); });
     extra.appendChild(mh);
+    const hbt = el("button", { class:"toggle-btn" + (state.hoursBonusOn !== false ? " on" : ""), style:"margin-top:12px" });
+    hbt.appendChild(el("span", { text:"Бонус за часы: 200–220 ч → 500 ₪, 221–240 ч → 1000 ₪" }));
+    hbt.appendChild(el("span", { class:"toggle-pill" + (state.hoursBonusOn !== false ? " on" : ""), text: state.hoursBonusOn !== false ? "ВКЛ" : "ВЫКЛ" }));
+    hbt.addEventListener("click", () => { state.hoursBonusOn = state.hoursBonusOn === false; saveData(); render(); });
+    extra.appendChild(hbt);
     const ht = el("button", { class:"toggle-btn" + (state.holidaysOn ? " on" : ""), style:"margin-top:12px" });
     ht.appendChild(el("span", { text:"Праздники Израиля — оплата как шабат" }));
     ht.appendChild(el("span", { class:"toggle-pill" + (state.holidaysOn ? " on" : ""), text: state.holidaysOn ? "ВКЛ" : "ВЫКЛ" }));
@@ -1190,7 +1209,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 15" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 16" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
