@@ -59,6 +59,7 @@
   .cell2 .am { font-size:10px; opacity:.85; }
   .cell2 .nt { margin-top:3px; font-size:10px; line-height:1.15; background:rgba(0,0,0,.3); border-radius:4px; padding:2px 3px; word-break:break-word;
                display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+  .cell2 .hol { font-size:9px; color:#fde68a; line-height:1.1; margin-top:2px; }
   .cell2.off { color:#64748b; } .cell2.off .sl { font-weight:400; font-size:10px; }
   .cell2.today { border-color:#34d399; }
   .cell2.sel { border-color:#22d3ee; transform:scale(.93); }
@@ -275,6 +276,12 @@ function calcShift(type, kind, rate) {
   rate = rate || HOURLY_RATE;
   if (type === "off" || !type) return { total: 0, breakdown: [] };
   if (kind === true) kind = "sat";
+  if (kind === "fri") kind = { h0:false, h1:true, h2:false };
+  else if (kind === "sat") kind = { h0:true, h1:false, h2:false };
+  else if (!kind) kind = { h0:false, h1:false, h2:false };
+  const holyAt = (c) => { const off = Math.floor(c / 24), hr = c - off * 24;
+    const H = [kind.h0, kind.h1, kind.h2, false];
+    return (H[off] && hr < SHABBAT_START) || (H[off + 1] && hr >= SHABBAT_START); };
   const def = SHIFT_TYPES[type];
   const isTor = def && def.group === "torranuta";
   const base = baseType(type);
@@ -288,9 +295,7 @@ function calcShift(type, kind, rate) {
   for (let k = 0; k < spec.hours / STEP; k++) {
     const worked = k * STEP;
     const clock = spec.start + worked + STEP / 2;      // середина отрезка
-    let shab = false;
-    if (kind === "fri") shab = clock >= SHABBAT_START && clock < SHABBAT_END;
-    else if (kind === "sat") shab = clock < SHABBAT_START;
+    const shab = holyAt(clock);
     const basePct = baseCoef(spec.cls, 0) * (shab ? 2 : 1);
     const pct = baseCoef(spec.cls, worked) * (shab ? 2 : 1);
     const gk = pct + "|" + (shab ? 1 : 0);
@@ -315,7 +320,7 @@ function calcShift(type, kind, rate) {
     // Авто: код надбавки зависит от смены: утро 50%, вечер 58.8%, ночь 70%,
     // шабат (сб до 17:00 / пт ночь) 117.5% — по листкам июня-августа
     let autoPct = spec.cls === "night" ? 70 : (spec.cls === "day" ? 58.8 : 50);
-    if ((kind === "sat" && spec.start < SHABBAT_START) || (kind === "fri" && spec.start >= SHABBAT_START)) autoPct = 117.5;
+    if (holyAt(spec.start + 0.25)) autoPct = 117.5;
     const manual = (typeof state !== "undefined" && state.torAuto === false);
     const torPct = manual ? (state.torPct || 58.8) : autoPct;
     const torBonus = Math.round(8 * rate * torPct / 100 * 100) / 100;
@@ -334,7 +339,25 @@ function migratePremiums() {
 const HE_DAYS = ["вс","пн","вт","ср","чт","пт","сб"];
 const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 function isSabbath(y,m,d){ return new Date(y,m,d).getDay()===6; }
-function shabKind(y,m,d){ const w = new Date(y,m,d).getDay(); return w===5 ? "fri" : (w===6 ? "sat" : false); }
+// Оплачиваемые праздники Израиля 2023–2030 (+ дни выборов). Оплата — как шабат: с 17:00 кануна до 17:00 праздника.
+const HOLIDAYS = {};
+"2023-04-06 Песах|2023-04-12 Песах (7-й день)|2023-04-26 Йом Ацмаут|2023-05-26 Шавуот|2023-09-16 Рош ха-Шана|2023-09-17 Рош ха-Шана|2023-09-25 Йом Кипур|2023-09-30 Суккот|2023-10-07 Симхат Тора|2024-02-27 Муниципальные выборы|2024-04-23 Песах|2024-04-29 Песах (7-й день)|2024-05-14 Йом Ацмаут|2024-06-12 Шавуот|2024-10-03 Рош ха-Шана|2024-10-04 Рош ха-Шана|2024-10-12 Йом Кипур|2024-10-17 Суккот|2024-10-24 Симхат Тора|2025-04-13 Песах|2025-04-19 Песах (7-й день)|2025-05-01 Йом Ацмаут|2025-06-02 Шавуот|2025-09-23 Рош ха-Шана|2025-09-24 Рош ха-Шана|2025-10-02 Йом Кипур|2025-10-07 Суккот|2025-10-14 Симхат Тора|2026-04-02 Песах|2026-04-08 Песах (7-й день)|2026-04-22 Йом Ацмаут|2026-05-22 Шавуот|2026-09-12 Рош ха-Шана|2026-09-13 Рош ха-Шана|2026-09-21 Йом Кипур|2026-09-26 Суккот|2026-10-03 Симхат Тора|2026-10-27 Выборы в Кнессет|2027-04-22 Песах|2027-04-28 Песах (7-й день)|2027-05-12 Йом Ацмаут|2027-06-11 Шавуот|2027-10-02 Рош ха-Шана|2027-10-03 Рош ха-Шана|2027-10-11 Йом Кипур|2027-10-16 Суккот|2027-10-23 Симхат Тора|2028-04-11 Песах|2028-04-17 Песах (7-й день)|2028-05-02 Йом Ацмаут|2028-05-31 Шавуот|2028-09-21 Рош ха-Шана|2028-09-22 Рош ха-Шана|2028-09-30 Йом Кипур|2028-10-05 Суккот|2028-10-12 Симхат Тора|2029-03-31 Песах|2029-04-06 Песах (7-й день)|2029-04-19 Йом Ацмаут|2029-05-20 Шавуот|2029-09-10 Рош ха-Шана|2029-09-11 Рош ха-Шана|2029-09-19 Йом Кипур|2029-09-24 Суккот|2029-10-01 Симхат Тора|2030-04-18 Песах|2030-04-24 Песах (7-й день)|2030-05-08 Йом Ацмаут|2030-06-07 Шавуот|2030-09-28 Рош ха-Шана|2030-09-29 Рош ха-Шана|2030-10-07 Йом Кипур|2030-10-12 Суккот|2030-10-19 Симхат Тора".split("|").forEach(p => { HOLIDAYS[p.slice(0,10)] = p.slice(11); });
+function dkey(y,m,d){ const t = new Date(y,m,d); return t.getFullYear() + "-" + String(t.getMonth()+1).padStart(2,"0") + "-" + String(t.getDate()).padStart(2,"0"); }
+// Праздник ли день: ручная отметка в окне дня важнее встроенного списка
+function holidayName(y,m,d){
+  const k = dkey(y,m,d);
+  const o = (typeof state !== "undefined" && state.holidayOverrides) ? state.holidayOverrides[k] : undefined;
+  if (o === false) return "";
+  if (o) return typeof o === "string" ? o : "Праздник";
+  return HOLIDAYS[k] || "";
+}
+function isHoly(y,m,d){
+  if (new Date(y,m,d).getDay() === 6) return true;
+  if (typeof state !== "undefined" && state.holidaysOn === false) return false;
+  return !!holidayName(y,m,d);
+}
+// Вид дня для расчёта: святой ли сам день, следующий и через день
+function shabKind(y,m,d){ return { h0: isHoly(y,m,d), h1: isHoly(y,m,d+1), h2: isHoly(y,m,d+2) }; }
 function getDaysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
 function getFirstDay(y,m){ return new Date(y,m,1).getDay(); }
 
@@ -354,6 +377,7 @@ function saveData() {
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot,
       notes: state.notes, noteTags: state.noteTags,
+      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -401,6 +425,10 @@ const state = {
   sheetDay: null, sheetType: null, sheetNote: "", showBreakdown: false,
   notes: saved.notes || {},
   noteTags: saved.noteTags || ["ПД", "Созвон", "Врач"],
+  holidaysOn: saved.holidaysOn !== undefined ? saved.holidaysOn : true,
+  holidayOverrides: saved.holidayOverrides || {},
+  goalNet: saved.goalNet || 0,
+  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0,
   selected: new Set(),
   bulkDropOpen: false,
   dayDropOpen: false,
@@ -770,6 +798,7 @@ function render() {
     [["Смен", stats.workDays], ["Часов", stats.totalHours], ["Брутто", Math.round(netCalc.gross).toLocaleString() + " ₪"], ["Нетто", Math.round(netCalc.net).toLocaleString() + " ₪"]]
       .forEach((p, i) => { const d = el("div", { class: i===3 ? "nn" : "" }); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { text: String(p[1]) })); ms.appendChild(d); });
     app.appendChild(ms);
+    if (state.goalNet > 0) app.appendChild(renderGoal(stats, netCalc));
 
     const grid = el("div", { class:"cal-wrap" });
     grid.appendChild(el("div"));
@@ -787,7 +816,8 @@ function render() {
       const sh = getShift(d);
       const def = SHIFT_TYPES[sh.type] || SHIFT_TYPES.off;
       const isTor = def.group === "torranuta";
-      const sat = isSabbath(state.year, state.month, d);
+      const hol = state.holidaysOn ? holidayName(state.year, state.month, d) : "";
+      const sat = isSabbath(state.year, state.month, d) || !!hol;
       const note = state.notes[key(d)] || "";
       const isSel = state.multiMode && state.selected.has(d);
       const cls = "cell2" + (sh.type==="off" ? " off" : "") + (isCur && now.getDate()===d ? " today" : "") + (isSel ? " sel" : "") + (isTor && !isSel ? " tor" : "");
@@ -807,6 +837,7 @@ function render() {
       } else {
         cell.appendChild(el("div", { class:"sl", text:"вых." }));
       }
+      if (hol) cell.appendChild(el("div", { class:"hol", text: "✡ " + hol }));
       if (note) cell.appendChild(el("div", { class:"nt", text: note }));
       grid.appendChild(cell);
     }
@@ -875,7 +906,7 @@ function render() {
           const dr = el("div", { class:"dy-row" });
           dr.appendChild(el("span", { class:"dy-dot", style:"background:" + def.color + (tor ? ";box-shadow:0 0 0 2px #c4b5fd" : "") }));
           dr.appendChild(el("span", { class:"dy-d", text: d + " " + HE_DAYS[new Date(state.year, state.month, d).getDay()] }));
-          dr.appendChild(el("span", { class:"dy-s", text: (tor ? "⚡" : "") + def.label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim() + (isSabbath(state.year, state.month, d) ? " ✡" : "") }));
+          dr.appendChild(el("span", { class:"dy-s", text: (tor ? "⚡" : "") + def.label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim() + (isSabbath(state.year, state.month, d) || (state.holidaysOn && holidayName(state.year, state.month, d)) ? " ✡" : "") }));
           dr.appendChild(el("span", { class:"dy-g", text: Math.round(r.total).toLocaleString() + " ₪" }));
           dr.addEventListener("click", () => { state.openDay = dOpen ? null : d; render(); });
           wkBox.appendChild(dr);
@@ -942,6 +973,25 @@ function render() {
     netCard.appendChild(totalDedRow);
 
     wrap.appendChild(netCard);
+
+    wrap.appendChild(renderYearStats());
+
+    const extra = el("div", { class:"settings-card" });
+    extra.appendChild(el("div", { class:"title", text:"🎯 Цель и праздники" }));
+    extra.appendChild(el("div", { class:"field-label", text:"Цель нетто на месяц, ₪ (0 — не показывать)" }));
+    const gi = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.goalNet || "") , placeholder:"0" });
+    caretToEnd(gi); gi.addEventListener("input", e => { state.goalNet = toNum(e.target.value); saveData(); });
+    extra.appendChild(gi);
+    const ht = el("button", { class:"toggle-btn" + (state.holidaysOn ? " on" : ""), style:"margin-top:12px" });
+    ht.appendChild(el("span", { text:"Праздники Израиля — оплата как шабат" }));
+    ht.appendChild(el("span", { class:"toggle-pill" + (state.holidaysOn ? " on" : ""), text: state.holidaysOn ? "ВКЛ" : "ВЫКЛ" }));
+    ht.addEventListener("click", () => { state.holidaysOn = !state.holidaysOn; saveData(); render(); });
+    extra.appendChild(ht);
+    extra.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Встроены праздники 2023–2030 и дни выборов. С 17:00 кануна до 17:00 праздника — как шабат. Любой день можно отметить или снять в окне дня." }));
+    const wz = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center", text:"🧭 Пройти мастер настройки заново" });
+    wz.addEventListener("click", () => { state.showWizard = true; state.wizStep = 0; render(); });
+    extra.appendChild(wz);
+    wrap.appendChild(extra);
 
     // Annual projection card
     const yr = computeYear();
@@ -1131,7 +1181,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 11" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 12" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1154,6 +1204,7 @@ function render() {
   }
 
   if (state.sheetDay) app.appendChild(renderDaySheet());
+  if (state.showWizard) app.appendChild(renderWizard());
 
   // ── BOTTOM BAR ──
   const bottomStats = computeStats();
@@ -1202,6 +1253,119 @@ function isoWeek(dt) {
   return Math.ceil(((d - y0) / 86400000 + 1) / 7);
 }
 const BASE_CHIPS = [["off","Выходной"],["morning","Утро 8"],["morning12","Утро 12"],["day","День 8"],["day12","День 12"],["night8","Ночь 8"],["night12","Ночь 12"]];
+function renderGoal(stats, net) {
+  const g = Number(state.goalNet) || 0;
+  const pct = Math.min(100, Math.round(net.net / g * 100));
+  const box = el("div", { style:"margin:2px 6px 4px;background:#1e293b;border-radius:9px;padding:7px 10px" });
+  const row = el("div", { style:"display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:5px" });
+  row.appendChild(el("span", { text:"🎯 Цель " + Math.round(g).toLocaleString() + " ₪ нетто" }));
+  const left = g - net.net;
+  let txt;
+  if (left <= 0) txt = "✅ цель достигнута";
+  else {
+    // сколько ещё смен: по средней чистой сумме за смену этого месяца (или ночь 8ч, если смен нет)
+    const perGross = stats.workDays ? stats.totalGross / stats.workDays : calcShift("night8", false, state.hourlyRate).total;
+    const ratio = net.gross > 0 ? net.net / net.gross : 0.85;
+    txt = "не хватает " + Math.round(left).toLocaleString() + " ₪ ≈ " + Math.ceil(left / (perGross * ratio)) + " смен";
+  }
+  row.appendChild(el("span", { text: txt, style: left <= 0 ? "color:#34d399" : "" }));
+  box.appendChild(row);
+  const bar = el("div", { style:"height:6px;background:#0f172a;border-radius:3px;overflow:hidden" });
+  bar.appendChild(el("div", { style:"height:100%;width:" + pct + "%;background:" + (pct >= 100 ? "#34d399" : "#3b82f6") }));
+  box.appendChild(bar);
+  return box;
+}
+// Помесячные итоги года (брутто/нетто), для статистики
+function yearMonths() {
+  const m0 = state.month, res = [];
+  try {
+    for (let m = 0; m < 12; m++) {
+      state.month = m;
+      const st = computeStats();
+      const n = st.workDays ? computeNet(st) : null;
+      res.push({ m, shifts: st.workDays, hours: st.totalHours, gross: n ? n.gross : 0, net: n ? n.net : 0 });
+    }
+  } finally { state.month = m0; }
+  return res;
+}
+function renderYearStats() {
+  const ms = yearMonths(), act = ms.filter(x => x.shifts > 0);
+  const card = el("div", { class:"settings-card" });
+  card.appendChild(el("div", { class:"title", text:"📈 Статистика за " + state.year + " год" }));
+  if (!act.length) { card.appendChild(el("div", { style:"font-size:12px;color:#64748b", text:"Нет введённых смен за этот год." })); return card; }
+  const sum = (k) => act.reduce((a, x) => a + x[k], 0);
+  const max = Math.max.apply(null, act.map(x => x.gross));
+  const best = act.reduce((a, x) => x.net > a.net ? x : a, act[0]);
+  const chart = el("div", { style:"display:flex;align-items:flex-end;gap:3px;height:90px;margin:4px 0 4px" });
+  ms.forEach(x => {
+    const col = el("div", { style:"flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:pointer;position:relative" });
+    const hG = max ? Math.round(x.gross / max * 100) : 0, hN = max ? Math.round(x.net / max * 100) : 0;
+    const b = el("div", { style:"position:relative;height:" + hG + "%;background:#1e3a8a;border-radius:3px 3px 0 0;" + (x.m === state.month ? "outline:1px solid #60a5fa" : "") });
+    b.appendChild(el("div", { style:"position:absolute;bottom:0;left:0;right:0;height:" + (hG ? Math.round(hN / hG * 100) : 0) + "%;background:#10b981;border-radius:3px 3px 0 0" }));
+    col.appendChild(b);
+    col.addEventListener("click", () => { state.month = x.m; saveData(); render(); });
+    chart.appendChild(col);
+  });
+  card.appendChild(chart);
+  const lab = el("div", { style:"display:flex;gap:3px;font-size:9px;color:#64748b;text-align:center;margin-bottom:8px" });
+  ["я","ф","м","а","м","и","и","а","с","о","н","д"].forEach((t, i) => lab.appendChild(el("div", { style:"flex:1" + (i===state.month ? ";color:#e2e8f0;font-weight:700" : ""), text:t })));
+  card.appendChild(lab);
+  card.appendChild(el("div", { style:"font-size:11px;color:#64748b;margin-bottom:8px", text:"Синее — брутто, зелёное — нетто. Нажми на столбик — откроется месяц." }));
+  const r = (l, v) => { const d = el("div", { class:"net-row" }); d.appendChild(el("span", { text:l, style:"color:#94a3b8" })); d.appendChild(el("span", { text:v, style:"color:#e2e8f0;font-weight:600" })); return d; };
+  card.appendChild(r("Месяцев с данными", String(act.length)));
+  card.appendChild(r("Смен / часов", sum("shifts") + " / " + sum("hours")));
+  card.appendChild(r("Брутто за год", Math.round(sum("gross")).toLocaleString() + " ₪"));
+  card.appendChild(r("Нетто за год", Math.round(sum("net")).toLocaleString() + " ₪"));
+  card.appendChild(r("В среднем нетто/мес", Math.round(sum("net") / act.length).toLocaleString() + " ₪"));
+  card.appendChild(r("Лучший месяц", MONTHS_RU[best.m] + " — " + Math.round(best.net).toLocaleString() + " ₪"));
+  return card;
+}
+// Мастер первого запуска (для новых пользователей)
+function renderWizard() {
+  const ov = el("div", { class:"modal-overlay", style:"align-items:center" });
+  const m = el("div", { class:"modal", style:"border-radius:20px;margin:0 12px" });
+  const steps = 4, st = state.wizStep;
+  m.appendChild(el("div", { style:"font-size:11px;color:#64748b;margin-bottom:6px", text:"Настройка · шаг " + (st + 1) + " из " + steps }));
+  const inp = (val, onv) => { const i = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(val) }); caretToEnd(i); i.addEventListener("input", e => onv(toNum(e.target.value))); return i; };
+  const opt = (label, on, fn) => { const b = el("button", { class:"toggle-btn" + (on ? " on" : ""), style:"margin-top:8px;justify-content:flex-start", text:(on ? "● " : "○ ") + label }); b.addEventListener("click", () => { fn(); render(); }); return b; };
+  if (st === 0) {
+    m.appendChild(el("div", { class:"modal-title", text:"👋 Привет! Почасовая ставка" }));
+    m.appendChild(el("div", { class:"modal-sub", text:"Сколько ₪ в час по договору (строка «שכר שעה» в листке)." }));
+    m.appendChild(inp(state.hourlyRate, v => { state.hourlyRate = v; }));
+  } else if (st === 1) {
+    m.appendChild(el("div", { class:"modal-title", text:"Налоговые баллы (נקודות זיכוי)" }));
+    m.appendChild(el("div", { class:"modal-sub", text:"Точное число есть в листке. Обычно: мужчина 2.25, женщина 2.75; дети, репатриация, учёба добавляют баллы." }));
+    m.appendChild(inp(state.creditPoints, v => { state.creditPoints = v; }));
+    const q = el("div", { style:"display:flex;gap:6px;margin-top:8px" });
+    [2.25, 2.75, 3.25, 4.25].forEach(v => { const b = el("button", { class:"qtag", text:String(v) }); b.addEventListener("click", () => { state.creditPoints = v; render(); }); q.appendChild(b); });
+    m.appendChild(q);
+  } else if (st === 2) {
+    m.appendChild(el("div", { class:"modal-title", text:"Где ты живёшь?" }));
+    m.appendChild(el("div", { class:"modal-sub", text:"Жители некоторых городов получают скидку на подоходный налог." }));
+    m.appendChild(opt("Нет скидки", !state.nofHagalil, () => { state.nofHagalil = false; }));
+    m.appendChild(opt("Ноф-ха-Галиль (12%, до 226 560 ₪/год)", state.nofHagalil && state.benefitPct === 12 && state.benefitCeilYear === NOF_HAGALIL_CEILING_YEAR,
+      () => { state.nofHagalil = true; state.benefitPct = 12; state.benefitCeilYear = NOF_HAGALIL_CEILING_YEAR; }));
+    m.appendChild(opt("Другой город со скидкой — укажу % в настройках", state.nofHagalil && !(state.benefitPct === 12 && state.benefitCeilYear === NOF_HAGALIL_CEILING_YEAR),
+      () => { state.nofHagalil = true; state.benefitPct = 7; }));
+  } else {
+    m.appendChild(el("div", { class:"modal-title", text:"Пенсия и керен иштальмут" }));
+    m.appendChild(el("div", { class:"modal-sub", text:"Обычно пенсия 6%, керен 2.5%. Можно поменять позже в «Итогах»." }));
+    m.appendChild(opt("Вычитать пенсию и керен", state.includePension, () => { state.includePension = !state.includePension; }));
+    if (state.includePension) {
+      m.appendChild(el("div", { class:"field-label", style:"margin-top:10px", text:"Пенсия, %" })); m.appendChild(inp(state.pensionPct, v => { state.pensionPct = v; }));
+      m.appendChild(el("div", { class:"field-label", style:"margin-top:8px", text:"Керен иштальмут, %" })); m.appendChild(inp(state.keheshPct, v => { state.keheshPct = v; }));
+    }
+  }
+  const btns = el("div", { class:"sheet-btns" });
+  const back = el("button", { text: st ? "Назад" : "Пропустить", style:"background:#334155;color:#94a3b8" });
+  back.addEventListener("click", () => { if (st) state.wizStep--; else state.showWizard = false; saveData(); render(); });
+  const next = el("button", { text: st < steps - 1 ? "Далее" : "Готово ✓", style:"background:#059669;color:#fff" });
+  next.addEventListener("click", () => { if (st < steps - 1) state.wizStep++; else { state.showWizard = false; state.view = "calendar"; } saveData(); render(); });
+  btns.appendChild(back); btns.appendChild(next);
+  m.appendChild(btns);
+  ov.appendChild(m);
+  return ov;
+}
 function openSheet(d) {
   state.sheetDay = d; state.sheetType = getShift(d).type; state.sheetTor = state.sheetType.indexOf("tor_") === 0; state.sheetNote = state.notes[key(d)] || ""; state.showBreakdown = false;
   render();
@@ -1216,7 +1380,9 @@ function renderDaySheet() {
   const dt = new Date(state.year, state.month, d);
   const wd = ["Воскресенье","Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"][dt.getDay()];
   const mGen = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"][state.month];
-  m.appendChild(el("div", { class:"modal-title", text: wd + ", " + d + " " + mGen + (dt.getDay()===6 ? " ✡️" : "") }));
+  const hk = dkey(state.year, state.month, d);
+  const holNow = holidayName(state.year, state.month, d);
+  m.appendChild(el("div", { class:"modal-title", text: wd + ", " + d + " " + mGen + (dt.getDay()===6 ? " ✡️" : "") + (holNow ? " · " + holNow : "") }));
   const t = state.sheetType || "off";
   const r = calcShift(t, shabKind(state.year, state.month, d), state.hourlyRate);
   const sub = el("div", { class:"modal-sub", style:"cursor:pointer" , text: (t==="off" ? "Выходной" : SHIFT_TYPES[t].label.replace(/🌅|☀️|🌙|🔴/g,"").trim() + " · " + Math.round(r.total).toLocaleString() + " ₪" + (r.breakdown.length ? (state.showBreakdown ? "  ▲" : "  ▼ детали") : "")) });
@@ -1248,6 +1414,16 @@ function renderDaySheet() {
   m.appendChild(chips);
   if (isTor && base === "off") m.appendChild(el("div", { style:"font-size:12px;color:#c4b5fd;margin:-4px 0 12px", text:"⚡ Торанута в выходной — теперь выбери смену (утро, день или ночь)." }));
 
+  if (dt.getDay() !== 6) {
+    const hb = el("button", { class:"schip" + (holNow ? " on" : ""), style:"margin:-4px 0 12px;" + (holNow ? "background:#a16207;color:#fff" : ""),
+      text: holNow ? "✡ Праздник: " + holNow + " ✓" : "✡ Отметить как праздник (оплата как шабат)" });
+    hb.addEventListener("click", () => {
+      if (holNow) { if (HOLIDAYS[hk]) state.holidayOverrides[hk] = false; else delete state.holidayOverrides[hk]; }
+      else { if (HOLIDAYS[hk]) delete state.holidayOverrides[hk]; else state.holidayOverrides[hk] = "Праздник"; }
+      saveData(); render();
+    });
+    m.appendChild(hb);
+  }
   m.appendChild(el("div", { class:"field-label", text:"Заметка" }));
   const ta = el("textarea", { class:"note-ta", placeholder:"Например: 8:30 врач" });
   ta.value = state.sheetNote;
@@ -1299,7 +1475,7 @@ function changeMonth(dir) {
   let x0 = null, y0 = 0, t0 = 0;
   document.addEventListener("touchstart", (e) => {
     const t = e.target;
-    if (e.touches.length !== 1 || state.showAutoModal || state.sheetDay || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
+    if (e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
   }, { passive: true });
   document.addEventListener("touchend", (e) => {
