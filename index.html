@@ -428,7 +428,7 @@ const state = {
   holidaysOn: saved.holidaysOn !== undefined ? saved.holidaysOn : true,
   holidayOverrides: saved.holidayOverrides || {},
   goalNet: saved.goalNet || 0,
-  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0,
+  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null,
   selected: new Set(),
   bulkDropOpen: false,
   dayDropOpen: false,
@@ -799,6 +799,9 @@ function render() {
       .forEach((p, i) => { const d = el("div", { class: i===3 ? "nn" : "" }); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { text: String(p[1]) })); ms.appendChild(d); });
     app.appendChild(ms);
     if (state.goalNet > 0) app.appendChild(renderGoal(stats, netCalc));
+    const pb = el("button", { class:"toggle-btn", style:"margin:4px 6px 2px;width:calc(100% - 12px);justify-content:center;background:#4c1d95", text:"🧠 Подобрать доп. часы до цели" });
+    pb.addEventListener("click", () => { state.showPlanner = true; state.plannerResult = state.goalNet > 0 ? planExtra(state.goalNet) : null; render(); });
+    app.appendChild(pb);
 
     const grid = el("div", { class:"cal-wrap" });
     grid.appendChild(el("div"));
@@ -1181,7 +1184,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 12" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 13" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1205,6 +1208,7 @@ function render() {
 
   if (state.sheetDay) app.appendChild(renderDaySheet());
   if (state.showWizard) app.appendChild(renderWizard());
+  if (state.showPlanner) app.appendChild(renderPlanner());
 
   // ── BOTTOM BAR ──
   const bottomStats = computeStats();
@@ -1253,6 +1257,105 @@ function isoWeek(dt) {
   return Math.ceil(((d - y0) / 86400000 + 1) / 7);
 }
 const BASE_CHIPS = [["off","Выходной"],["morning","Утро 8"],["morning12","Утро 12"],["day","День 8"],["day12","День 12"],["night8","Ночь 8"],["night12","Ночь 12"]];
+// ── Умный планировщик: как добрать до цели нетто ──
+// Правила: не больше 7 рабочих дней подряд; к любой 8-часовой смене можно добавить 4 часа (→ 12ч);
+// в выходной можно выйти на доп. смену (оплачивается как торанута — надбавка за смену в выходной).
+const EXTEND_TO = { morning:"morning12", day:"day12", night8:"night12", tor_morning:"tor_morning12", tor_day:"tor_day12", tor_night8:"tor_night12" };
+const EXTRA_OPTIONS = ["tor_morning","tor_day","tor_night8","tor_morning12","tor_day12","tor_night12"];
+function netFor(shifts) {
+  const keep = state.shifts; state.shifts = shifts;
+  try { return computeNet(computeStats()).net; } finally { state.shifts = keep; }
+}
+function isWorkKey(shifts, dt) { const s = shifts[dkey(dt.getFullYear(), dt.getMonth(), dt.getDate())]; return !!(s && s.type && s.type !== "off"); }
+function runIfWork(shifts, y, m, d) {
+  let run = 1;
+  for (let i = 1; i < 30 && isWorkKey(shifts, new Date(y, m, d - i)); i++) run++;
+  for (let i = 1; i < 30 && isWorkKey(shifts, new Date(y, m, d + i)); i++) run++;
+  return run;
+}
+function planExtra(goal) {
+  const y = state.year, m = state.month, dim = getDaysInMonth(y, m);
+  const now = new Date();
+  let fromDay = 1;
+  if (y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth())) return { error:"Этот месяц уже прошёл." };
+  if (y === now.getFullYear() && m === now.getMonth()) fromDay = now.getDate() + 1;
+  const plan = JSON.parse(JSON.stringify(state.shifts));
+  const startNet = netFor(plan);
+  let cur = startNet;
+  const steps = [];
+  for (let guard = 0; guard < 62 && cur < goal; guard++) {
+    let best = null;
+    for (let d = fromDay; d <= dim; d++) {
+      const k = dkey(y, m, d), t = (plan[k] && plan[k].type) || "off";
+      const kind = shabKind(y, m, d);
+      const curPay = calcShift(t, kind, state.hourlyRate).total;
+      let opts = [];
+      if (t === "off") {
+        if (runIfWork(plan, y, m, d) > 7) continue;
+        opts = EXTRA_OPTIONS.map(nt => ({ nt, hrs: SHIFT_TYPES[nt].hours, what:"доп. смена" }));
+      } else if (EXTEND_TO[t]) {
+        opts = [{ nt: EXTEND_TO[t], hrs: 4, what:"+4 часа" }];
+      }
+      opts.forEach(o => {
+        const gain = calcShift(o.nt, kind, state.hourlyRate).total - curPay;
+        const score = gain / o.hrs;
+        if (gain > 0 && (!best || score > best.score)) best = { d, k, from: t, to: o.nt, hrs: o.hrs, what: o.what, gross: gain, score };
+      });
+    }
+    if (!best) break;
+    // если до цели нужно немного, а лучший вариант — целая 12-часовая смена, берём 8-часовую
+    plan[best.k] = { type: best.to };
+    const n2 = netFor(plan);
+    best.net = n2 - cur; cur = n2;
+    steps.push(best);
+  }
+  steps.sort((a, b) => a.d - b.d);
+  return { steps, plan, startNet, endNet: cur, reached: cur >= goal, hours: steps.reduce((a, x) => a + x.hrs, 0) };
+}
+function renderPlanner() {
+  const ov = el("div", { class:"modal-overlay" });
+  ov.addEventListener("click", (e) => { if (e.target === ov) { state.showPlanner = false; render(); } });
+  const mdl = el("div", { class:"modal" });
+  mdl.appendChild(el("div", { class:"modal-title", text:"🧠 Как добрать до цели — " + MONTHS_RU[state.month] }));
+  mdl.appendChild(el("div", { class:"modal-sub", text:"Не больше 7 дней подряд. К 8-часовой смене можно добавить 4 часа, в выходной — выйти на доп. смену (торанута). Выбираю самые выгодные часы: шабат, праздники, ночи." }));
+  mdl.appendChild(el("div", { class:"field-label", text:"Цель нетто на месяц, ₪" }));
+  const gi = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.goalNet || "") });
+  caretToEnd(gi);
+  const go = el("button", { class:"apply-btn", style:"margin-top:8px", text:"Рассчитать" });
+  go.addEventListener("click", () => { state.goalNet = toNum(gi.value); saveData(); state.plannerResult = planExtra(state.goalNet); render(); });
+  mdl.appendChild(gi); mdl.appendChild(go);
+  const r = state.plannerResult;
+  if (r) {
+    if (r.error) mdl.appendChild(el("div", { style:"color:#f87171;font-size:13px;margin:8px 0", text: r.error }));
+    else if (!r.steps.length) mdl.appendChild(el("div", { style:"color:#34d399;font-size:13px;margin:8px 0", text: r.startNet >= state.goalNet ? "✅ Цель уже достигнута по текущему графику." : "Добавить нечего: нет свободных дней без нарушения правила 7 дней." }));
+    else {
+      const box = el("div", { class:"breakdown-box", style:"margin-top:10px" });
+      const dn = ["вс","пн","вт","ср","чт","пт","сб"];
+      r.steps.forEach(x => {
+        const row = el("div", { class:"breakdown-row" });
+        const dt = new Date(state.year, state.month, x.d);
+        const lab = (l) => SHIFT_TYPES[l].label.replace(/🌅|☀️|🌙|🔴/g,"").replace("Тор.","").trim();
+        const hol = holidayName(state.year, state.month, x.d);
+        row.appendChild(el("span", { style:"color:#cbd5e1", text: x.d + " " + dn[dt.getDay()] + (dt.getDay()===6 || hol ? " ✡" : "") + " · " + (x.what === "+4 часа" ? lab(x.from) + " → 12ч" : "доп.: " + lab(x.to)) }));
+        row.appendChild(el("span", { style:"color:#34d399;font-weight:700", text:"+" + x.hrs + "ч · +" + Math.round(x.net).toLocaleString() + " ₪" }));
+        box.appendChild(row);
+      });
+      mdl.appendChild(box);
+      const sum = el("div", { style:"margin:10px 0;font-size:14px" });
+      sum.appendChild(el("div", { text:"Доп. часов: " + r.hours + " ч", style:"font-weight:700" }));
+      sum.appendChild(el("div", { text:"Нетто: " + Math.round(r.startNet).toLocaleString() + " → " + Math.round(r.endNet).toLocaleString() + " ₪" + (r.reached ? " ✅" : " (больше без нарушения правила 7 дней не получается)"), style:"color:" + (r.reached ? "#34d399" : "#fbbf24") }));
+      mdl.appendChild(sum);
+      const ap = el("button", { class:"apply-btn", style:"background:#059669", text:"Применить в календарь" });
+      ap.addEventListener("click", () => { r.steps.forEach(x => { state.shifts[x.k] = { type: x.to }; }); state.showPlanner = false; state.plannerResult = null; saveData(); render(); });
+      mdl.appendChild(ap);
+    }
+  }
+  const cl = el("button", { class:"cancel-btn", text:"Закрыть" });
+  cl.addEventListener("click", () => { state.showPlanner = false; state.plannerResult = null; render(); });
+  mdl.appendChild(cl);
+  ov.appendChild(mdl);
+  return ov;
+}
 function renderGoal(stats, net) {
   const g = Number(state.goalNet) || 0;
   const pct = Math.min(100, Math.round(net.net / g * 100));
@@ -1475,7 +1578,7 @@ function changeMonth(dir) {
   let x0 = null, y0 = 0, t0 = 0;
   document.addEventListener("touchstart", (e) => {
     const t = e.target;
-    if (e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
+    if (e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || state.showPlanner || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
   }, { passive: true });
   document.addEventListener("touchend", (e) => {
