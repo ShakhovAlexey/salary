@@ -17,6 +17,8 @@
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin:0; padding:0; }
   html, body { background:#0f172a; color:#f1f5f9; font-family: system-ui, -apple-system, sans-serif; }
+  html, body { overflow-x:hidden; }
+  #pager { touch-action:pan-y; will-change:transform; }
   #app { max-width:480px; margin:0 auto; padding-bottom:90px; min-height:100vh; }
 
   .header { background:#1e293b; padding:14px 14px 10px; position:sticky; top:0; z-index:50; border-bottom:1px solid #334155; }
@@ -1221,7 +1223,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 17" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 18" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1257,6 +1259,14 @@ function render() {
   right.appendChild(el("div", { id:"bottom-net",   class:"n", text: Math.round(bottomNet.net).toLocaleString() + " ₪ нетто" }));
   bottomBar.appendChild(right);
   app.appendChild(bottomBar);
+
+  // всё содержимое между шапкой и нижней панелью — в «страницу», которую двигает свайп
+  const pager = el("div", { id:"pager" });
+  [...app.children].forEach(ch => {
+    if (ch.classList.contains("header") || ch.classList.contains("bottom-bar") || ch.classList.contains("modal-overlay")) return;
+    pager.appendChild(ch);
+  });
+  app.insertBefore(pager, app.children[1] || null);
 }
 
 // Обновляет только числа нетто-карточки без полного ре-рендера
@@ -1502,7 +1512,9 @@ function renderGoal(stats, net) {
   let txt;
   if (left <= 0) txt = "✅ цель достигнута";
   else {
-    const p = planExtra(g);
+    const sig = state.year + "|" + state.month + "|" + g + "|" + state.maxHours + "|" + JSON.stringify(Object.keys(state.shifts).filter(k => k.indexOf(ymKey()) === 0).map(k => k + state.shifts[k].type)) + "|" + getPremium() + "|" + getExtras();
+    if (!renderGoal.cache || renderGoal.cache.sig !== sig) renderGoal.cache = { sig, p: planExtra(g) };
+    const p = renderGoal.cache.p;
     if (p.error || !p.steps) txt = "не хватает " + Math.round(left).toLocaleString() + " ₪";
     else if (p.reached) txt = "не хватает " + Math.round(left).toLocaleString() + " ₪ ≈ +" + p.hours + " ч";
     else txt = "макс. +" + p.hours + " ч → " + Math.round(p.endNet).toLocaleString() + " ₪";
@@ -1571,6 +1583,12 @@ function renderWizard() {
     m.appendChild(el("div", { class:"modal-title", text:"👋 Привет! Почасовая ставка" }));
     m.appendChild(el("div", { class:"modal-sub", text:"Сколько ₪ в час по договору (строка «שכר שעה» в листке)." }));
     m.appendChild(inp(state.hourlyRate, v => { state.hourlyRate = v; }));
+    const rb = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center;background:#0f172a;border:1px solid #334155", text:"📥 Переношу с другого телефона — загрузить копию" });
+    rb.addEventListener("click", () => {
+      state.showWizard = false; state.view = "summary"; render();
+      setTimeout(() => { const c = [...document.querySelectorAll(".settings-card .title")].find(x => x.textContent.indexOf("Резервная копия") >= 0); if (c) c.scrollIntoView({ behavior:"smooth", block:"start" }); }, 50);
+    });
+    m.appendChild(rb);
   } else if (st === 1) {
     m.appendChild(el("div", { class:"modal-title", text:"Налоговые баллы (נקודות זיכוי)" }));
     m.appendChild(el("div", { class:"modal-sub", text:"Точное число есть в листке. Обычно: мужчина 2.25, женщина 2.75; дети, репатриация, учёба добавляют баллы." }));
@@ -1700,30 +1718,59 @@ function renderDaySheet() {
 }
 
 // ── Смена месяца: стрелки и свайп влево/вправо по экрану ──
-function changeMonth(dir) {
+function shiftMonth(dir) {
   state.month += dir;
   if (state.month < 0) { state.year--; state.month = 11; }
   if (state.month > 11) { state.year++; state.month = 0; }
-  state.selected = new Set(); saveData(); render();
-  const app = document.getElementById("app");
-  if (app && app.animate) app.animate(
-    [{ transform: "translateX(" + (dir > 0 ? 40 : -40) + "px)", opacity: 0.4 }, { transform: "translateX(0)", opacity: 1 }],
-    { duration: 180, easing: "ease-out" });
+  state.selected = new Set(); saveData();
+}
+let sliding = false;
+// Плавная смена месяца: старая страница уезжает, новая въезжает с той стороны
+function changeMonth(dir, fromX) {
+  if (sliding) return;
+  const pg = document.getElementById("pager");
+  const W = window.innerWidth || 400;
+  if (!pg) { shiftMonth(dir); render(); return; }
+  sliding = true;
+  pg.style.transition = "transform 150ms cubic-bezier(.4,0,1,1)";
+  pg.style.transform = "translateX(" + (dir > 0 ? -W : W) + "px)";
+  setTimeout(() => {
+    shiftMonth(dir); render();
+    const np = document.getElementById("pager");
+    np.style.transition = "none";
+    np.style.transform = "translateX(" + (dir > 0 ? W : -W) * 0.5 + "px)";
+    np.getBoundingClientRect();   // зафиксировать стартовую позицию
+    np.style.transition = "transform 240ms cubic-bezier(.2,.8,.2,1)";
+    np.style.transform = "translateX(0)";
+    setTimeout(() => { np.style.transition = ""; np.style.transform = ""; sliding = false; }, 260);
+  }, 150);
 }
 (function () {
-  let x0 = null, y0 = 0, t0 = 0;
+  let x0 = null, y0 = 0, t0 = 0, drag = false, dx = 0;
+  const pager = () => document.getElementById("pager");
   document.addEventListener("touchstart", (e) => {
     const t = e.target;
-    if (e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || state.showPlanner || (t.closest && t.closest("input,textarea,select"))) { x0 = null; return; }
-    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+    if (sliding || e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || state.showPlanner ||
+        (t.closest && (t.closest("input,textarea,select") || t.closest(".header") || !t.closest("#pager")))) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); drag = false; dx = 0;
   }, { passive: true });
-  document.addEventListener("touchend", (e) => {
+  document.addEventListener("touchmove", (e) => {
     if (x0 === null) return;
-    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+    dx = e.touches[0].clientX - x0; const dy = e.touches[0].clientY - y0;
+    if (!drag) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { x0 = null; return; }   // вертикальная прокрутка
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) drag = true; else return;
+    }
+    const p = pager(); if (p) { p.style.transition = "none"; p.style.transform = "translateX(" + dx + "px)"; }
+  }, { passive: true });
+  document.addEventListener("touchend", () => {
+    if (x0 === null) return;
     x0 = null;
-    if (Date.now() - t0 > 700) return;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    changeMonth(dx < 0 ? 1 : -1);   // свайп влево — следующий месяц
+    if (!drag) return;
+    const v = Math.abs(dx) / Math.max(1, Date.now() - t0);   // px/мс
+    const p = pager();
+    if (Math.abs(dx) > 70 || (Math.abs(dx) > 30 && v > 0.4)) changeMonth(dx < 0 ? 1 : -1);
+    else if (p) { p.style.transition = "transform 200ms cubic-bezier(.2,.8,.2,1)"; p.style.transform = "translateX(0)"; }
   }, { passive: true });
 })();
 
