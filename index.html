@@ -111,6 +111,20 @@
 
   .section-label { font-size:11px; font-weight:700; color:#64748b; margin-bottom:6px; letter-spacing:1px; }
 
+  .wk-box { background:#1e293b; border-radius:12px; overflow:hidden; margin-bottom:6px; }
+  .wk-row { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid #0f172a; cursor:pointer; }
+  .wk-row.open { background:#273449; }
+  .wk-n { font-size:13px; font-weight:700; min-width:52px; }
+  .wk-d { flex:1; font-size:11px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wk-g { font-size:15px; font-weight:800; color:#34d399; }
+  .wk-ar { width:12px; color:#64748b; font-size:12px; }
+  .dy-row { display:flex; align-items:center; gap:8px; padding:7px 12px 7px 20px; background:#172033; border-bottom:1px solid #0f172a; font-size:12px; cursor:pointer; }
+  .dy-dot { width:9px; height:9px; border-radius:3px; flex:none; }
+  .dy-d { min-width:44px; color:#cbd5e1; font-weight:600; }
+  .dy-s { flex:1; color:#94a3b8; }
+  .dy-g { font-weight:700; color:#6ee7b7; }
+  .dy-bd { display:flex; flex-wrap:wrap; gap:4px; padding:4px 12px 8px 37px; background:#172033; border-bottom:1px solid #0f172a; }
+  .dy-bd span { font-size:11px; color:#94a3b8; background:#0f172a; border-radius:4px; padding:1px 6px; }
   .week-card { background:#1e293b; border-radius:12px; padding:12px 16px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
   .week-card .t { font-size:14px; font-weight:700; }
   .week-card .s { font-size:12px; color:#64748b; }
@@ -383,6 +397,7 @@ const state = {
   cycleStartDay: 1, // 1-based day of current month to start from
   view: "calendar",
   multiMode: false,
+  openWeeks: new Set(), openDay: null,
   sheetDay: null, sheetType: null, sheetNote: "", showBreakdown: false,
   notes: saved.notes || {},
   noteTags: saved.noteTags || ["ПД", "Созвон", "Врач"],
@@ -825,41 +840,55 @@ function render() {
     grossCard.appendChild(statsRow);
     wrap.appendChild(grossCard);
 
-    wrap.appendChild(el("div", { class:"section-label", text:"ПО НЕДЕЛЯМ" }));
-    Object.keys(stats.weekly).forEach(wn => {
-      const w = stats.weekly[wn];
-      const card = el("div", { class:"week-card" });
-      const left = el("div");
-      left.appendChild(el("div", { class:"t", text:"Неделя " + wn }));
-      left.appendChild(el("div", { class:"s", text: w.days + " смен · " + w.hours + "ч" }));
-      card.appendChild(left);
-      card.appendChild(el("div", { class:"g", text: Math.round(w.gross).toLocaleString() + " ₪" }));
-      wrap.appendChild(card);
-    });
-
-    wrap.appendChild(el("div", { class:"section-label", text:"ПО ДНЯМ", style:"margin-top:14px" }));
-    for (let d=1; d<=daysInMonth; d++) {
-      const sh = getShift(d);
-      if (sh.type === "off") continue;
-      const sab = isSabbath(state.year, state.month, d);
-      const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
-      const dow = HE_DAYS[new Date(state.year, state.month, d).getDay()];
-      const tor = SHIFT_TYPES[sh.type] && (SHIFT_TYPES[sh.type].group === "torranuta");
-      const card = el("div", { class:"day-card", style:"border-left-color:" + (sab?"#f59e0b":(tor?"#7c3aed":"#3b82f6")) });
-      const row = el("div", { class:"day-card-row" });
-      const left = el("div");
-      left.appendChild(el("span", { text: d + " " + MONTHS_RU[state.month].slice(0,3), style:"font-size:14px;font-weight:700" }));
-      left.appendChild(el("span", { text: " " + dow, style:"font-size:12px;color:#64748b;margin-left:6px" }));
-      left.appendChild(el("span", { text: " " + SHIFT_TYPES[sh.type].label, style:"font-size:12px;color:" + (tor?"#a78bfa":"#94a3b8") + ";margin-left:4px" }));
-      if (sab) left.appendChild(el("span", { text:" ✡️", style:"font-size:11px;color:#fbbf24;margin-left:4px" }));
-      row.appendChild(left);
-      row.appendChild(el("div", { text: r.total + " ₪", style:"font-size:16px;font-weight:800;color:#34d399" }));
-      card.appendChild(row);
-      const bd = el("div", { class:"day-card-bd" });
-      r.breakdown.forEach(b => bd.appendChild(el("span", { text: b.hrs+"ч×"+b.pct+"%="+b.sum+"₪" })));
-      card.appendChild(bd);
-      wrap.appendChild(card);
+    // По неделям — компактный список, неделя раскрывается в дни, день — в расчёт по коэффициентам
+    wrap.appendChild(el("div", { class:"section-label", text:"ПО НЕДЕЛЯМ · нажми, чтобы раскрыть" }));
+    const wkBox = el("div", { class:"wk-box" });
+    const mShort = MONTHS_RU[state.month].slice(0,3).toLowerCase();
+    let d0 = 1;
+    while (d0 <= daysInMonth) {
+      const dow0 = new Date(state.year, state.month, d0).getDay();
+      const d1 = Math.min(daysInMonth, d0 + (6 - dow0));
+      const days = [];
+      let wg = 0, wh = 0;
+      for (let d = d0; d <= d1; d++) {
+        const sh = getShift(d);
+        if (sh.type === "off") continue;
+        const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
+        days.push({ d, sh, r }); wg += r.total; wh += (SHIFT_TYPES[sh.type].hours || 0);
+      }
+      const wk = isoWeek(new Date(state.year, state.month, d0));
+      const wKey = state.year + "-" + state.month + "-" + d0;
+      const open = state.openWeeks.has(wKey);
+      const row = el("div", { class:"wk-row" + (open ? " open" : "") });
+      row.appendChild(el("span", { class:"wk-n", text: "Нед. " + wk }));
+      row.appendChild(el("span", { class:"wk-d", text: d0 + (d1>d0 ? "–" + d1 : "") + " " + mShort + " · " + days.length + " см · " + wh + "ч" }));
+      row.appendChild(el("span", { class:"wk-g", text: Math.round(wg).toLocaleString() + " ₪" }));
+      row.appendChild(el("span", { class:"wk-ar", text: days.length ? (open ? "▴" : "▾") : "" }));
+      const startD = d0;
+      row.addEventListener("click", () => { if (!days.length) return; if (open) state.openWeeks.delete(wKey); else state.openWeeks.add(wKey); render(); });
+      wkBox.appendChild(row);
+      if (open) {
+        days.forEach(({ d, sh, r }) => {
+          const def = SHIFT_TYPES[sh.type];
+          const tor = def.group === "torranuta";
+          const dOpen = state.openDay === d;
+          const dr = el("div", { class:"dy-row" });
+          dr.appendChild(el("span", { class:"dy-dot", style:"background:" + def.color + (tor ? ";box-shadow:0 0 0 2px #c4b5fd" : "") }));
+          dr.appendChild(el("span", { class:"dy-d", text: d + " " + HE_DAYS[new Date(state.year, state.month, d).getDay()] }));
+          dr.appendChild(el("span", { class:"dy-s", text: (tor ? "⚡" : "") + def.label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim() + (isSabbath(state.year, state.month, d) ? " ✡" : "") }));
+          dr.appendChild(el("span", { class:"dy-g", text: Math.round(r.total).toLocaleString() + " ₪" }));
+          dr.addEventListener("click", () => { state.openDay = dOpen ? null : d; render(); });
+          wkBox.appendChild(dr);
+          if (dOpen) {
+            const bd = el("div", { class:"dy-bd" });
+            r.breakdown.forEach(b => bd.appendChild(el("span", { text: b.hrs + "ч×" + b.pct + "% = " + b.sum + "₪" })));
+            wkBox.appendChild(bd);
+          }
+        });
+      }
+      d0 = d1 + 1;
     }
+    wrap.appendChild(wkBox);
 
     // Net salary card
     const netCard = el("div", { class:"net-card" });
@@ -1102,7 +1131,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 10" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 11" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
