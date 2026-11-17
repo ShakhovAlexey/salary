@@ -377,7 +377,7 @@ function saveData() {
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot,
       notes: state.notes, noteTags: state.noteTags,
-      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet,
+      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, maxHours: state.maxHours,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -428,6 +428,7 @@ const state = {
   holidaysOn: saved.holidaysOn !== undefined ? saved.holidaysOn : true,
   holidayOverrides: saved.holidayOverrides || {},
   goalNet: saved.goalNet || 0,
+  maxHours: saved.maxHours || 240,
   showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null,
   selected: new Set(),
   bulkDropOpen: false,
@@ -985,6 +986,10 @@ function render() {
     const gi = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.goalNet || "") , placeholder:"0" });
     caretToEnd(gi); gi.addEventListener("input", e => { state.goalNet = toNum(e.target.value); saveData(); });
     extra.appendChild(gi);
+    extra.appendChild(el("div", { class:"field-label", style:"margin-top:10px", text:"Лимит часов в месяц" }));
+    const mh = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.maxHours || 240) });
+    caretToEnd(mh); mh.addEventListener("input", e => { state.maxHours = toNum(e.target.value) || 240; saveData(); });
+    extra.appendChild(mh);
     const ht = el("button", { class:"toggle-btn" + (state.holidaysOn ? " on" : ""), style:"margin-top:12px" });
     ht.appendChild(el("span", { text:"Праздники Израиля — оплата как шабат" }));
     ht.appendChild(el("span", { class:"toggle-pill" + (state.holidaysOn ? " on" : ""), text: state.holidaysOn ? "ВКЛ" : "ВЫКЛ" }));
@@ -1184,7 +1189,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 13" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 14" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1281,6 +1286,10 @@ function planExtra(goal) {
   if (y === now.getFullYear() && m === now.getMonth()) fromDay = now.getDate() + 1;
   const plan = JSON.parse(JSON.stringify(state.shifts));
   const startNet = netFor(plan);
+  const cap = Number(state.maxHours) || 240;
+  let hrsNow = 0;
+  for (let d = 1; d <= dim; d++) { const s0 = plan[dkey(y, m, d)]; if (s0 && SHIFT_TYPES[s0.type]) hrsNow += SHIFT_TYPES[s0.type].hours; }
+  const startHours = hrsNow;
   let cur = startNet;
   const steps = [];
   for (let guard = 0; guard < 62 && cur < goal; guard++) {
@@ -1297,6 +1306,7 @@ function planExtra(goal) {
         opts = [{ nt: EXTEND_TO[t], hrs: 4, what:"+4 часа" }];
       }
       opts.forEach(o => {
+        if (hrsNow + o.hrs > cap) return;   // не больше лимита часов в месяц
         const gain = calcShift(o.nt, kind, state.hourlyRate).total - curPay;
         const score = gain / o.hrs;
         if (gain > 0 && (!best || score > best.score)) best = { d, k, from: t, to: o.nt, hrs: o.hrs, what: o.what, gross: gain, score };
@@ -1304,20 +1314,20 @@ function planExtra(goal) {
     }
     if (!best) break;
     // если до цели нужно немного, а лучший вариант — целая 12-часовая смена, берём 8-часовую
-    plan[best.k] = { type: best.to };
+    plan[best.k] = { type: best.to }; hrsNow += best.hrs;
     const n2 = netFor(plan);
     best.net = n2 - cur; cur = n2;
     steps.push(best);
   }
   steps.sort((a, b) => a.d - b.d);
-  return { steps, plan, startNet, endNet: cur, reached: cur >= goal, hours: steps.reduce((a, x) => a + x.hrs, 0) };
+  return { steps, plan, startNet, endNet: cur, reached: cur >= goal, hours: steps.reduce((a, x) => a + x.hrs, 0), startHours, endHours: hrsNow, cap, capHit: hrsNow + 4 > cap };
 }
 function renderPlanner() {
   const ov = el("div", { class:"modal-overlay" });
   ov.addEventListener("click", (e) => { if (e.target === ov) { state.showPlanner = false; render(); } });
   const mdl = el("div", { class:"modal" });
   mdl.appendChild(el("div", { class:"modal-title", text:"🧠 Как добрать до цели — " + MONTHS_RU[state.month] }));
-  mdl.appendChild(el("div", { class:"modal-sub", text:"Не больше 7 дней подряд. К 8-часовой смене можно добавить 4 часа, в выходной — выйти на доп. смену (торанута). Выбираю самые выгодные часы: шабат, праздники, ночи." }));
+  mdl.appendChild(el("div", { class:"modal-sub", text:"Не больше 7 дней подряд и не больше " + (state.maxHours || 240) + " ч в месяц. К 8-часовой смене можно добавить 4 часа, в выходной — выйти на доп. смену (торанута). Выбираю самые выгодные часы: шабат, праздники, ночи." }));
   mdl.appendChild(el("div", { class:"field-label", text:"Цель нетто на месяц, ₪" }));
   const gi = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.goalNet || "") });
   caretToEnd(gi);
@@ -1327,7 +1337,7 @@ function renderPlanner() {
   const r = state.plannerResult;
   if (r) {
     if (r.error) mdl.appendChild(el("div", { style:"color:#f87171;font-size:13px;margin:8px 0", text: r.error }));
-    else if (!r.steps.length) mdl.appendChild(el("div", { style:"color:#34d399;font-size:13px;margin:8px 0", text: r.startNet >= state.goalNet ? "✅ Цель уже достигнута по текущему графику." : "Добавить нечего: нет свободных дней без нарушения правила 7 дней." }));
+    else if (!r.steps.length) mdl.appendChild(el("div", { style:"color:#34d399;font-size:13px;margin:8px 0", text: r.startNet >= state.goalNet ? "✅ Цель уже достигнута по текущему графику." : "Добавить нечего: мешает правило 7 дней подряд или лимит " + (state.maxHours || 240) + " ч в месяц." }));
     else {
       const box = el("div", { class:"breakdown-box", style:"margin-top:10px" });
       const dn = ["вс","пн","вт","ср","чт","пт","сб"];
@@ -1342,8 +1352,8 @@ function renderPlanner() {
       });
       mdl.appendChild(box);
       const sum = el("div", { style:"margin:10px 0;font-size:14px" });
-      sum.appendChild(el("div", { text:"Доп. часов: " + r.hours + " ч", style:"font-weight:700" }));
-      sum.appendChild(el("div", { text:"Нетто: " + Math.round(r.startNet).toLocaleString() + " → " + Math.round(r.endNet).toLocaleString() + " ₪" + (r.reached ? " ✅" : " (больше без нарушения правила 7 дней не получается)"), style:"color:" + (r.reached ? "#34d399" : "#fbbf24") }));
+      sum.appendChild(el("div", { text:"Доп. часов: +" + r.hours + " ч  (всего в месяце " + r.startHours + " → " + r.endHours + " из " + r.cap + " ч)", style:"font-weight:700" }));
+      sum.appendChild(el("div", { text:"Нетто: " + Math.round(r.startNet).toLocaleString() + " → " + Math.round(r.endNet).toLocaleString() + " ₪" + (r.reached ? " ✅" : (r.capHit ? " (упёрлись в лимит " + r.cap + " ч в месяц)" : " (больше без нарушения правила 7 дней не получается)")), style:"color:" + (r.reached ? "#34d399" : "#fbbf24") }));
       mdl.appendChild(sum);
       const ap = el("button", { class:"apply-btn", style:"background:#059669", text:"Применить в календарь" });
       ap.addEventListener("click", () => { r.steps.forEach(x => { state.shifts[x.k] = { type: x.to }; }); state.showPlanner = false; state.plannerResult = null; saveData(); render(); });
@@ -1361,15 +1371,15 @@ function renderGoal(stats, net) {
   const pct = Math.min(100, Math.round(net.net / g * 100));
   const box = el("div", { style:"margin:2px 6px 4px;background:#1e293b;border-radius:9px;padding:7px 10px" });
   const row = el("div", { style:"display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:5px" });
-  row.appendChild(el("span", { text:"🎯 Цель " + Math.round(g).toLocaleString() + " ₪ нетто" }));
+  row.appendChild(el("span", { text:"🎯 " + Math.round(g).toLocaleString() + " ₪ · " + stats.totalHours + "/" + (state.maxHours || 240) + " ч" }));
   const left = g - net.net;
   let txt;
   if (left <= 0) txt = "✅ цель достигнута";
   else {
-    // сколько ещё смен: по средней чистой сумме за смену этого месяца (или ночь 8ч, если смен нет)
-    const perGross = stats.workDays ? stats.totalGross / stats.workDays : calcShift("night8", false, state.hourlyRate).total;
-    const ratio = net.gross > 0 ? net.net / net.gross : 0.85;
-    txt = "не хватает " + Math.round(left).toLocaleString() + " ₪ ≈ " + Math.ceil(left / (perGross * ratio)) + " смен";
+    const p = planExtra(g);
+    if (p.error || !p.steps) txt = "не хватает " + Math.round(left).toLocaleString() + " ₪";
+    else if (p.reached) txt = "не хватает " + Math.round(left).toLocaleString() + " ₪ ≈ +" + p.hours + " ч";
+    else txt = "макс. +" + p.hours + " ч → " + Math.round(p.endNet).toLocaleString() + " ₪";
   }
   row.appendChild(el("span", { text: txt, style: left <= 0 ? "color:#34d399" : "" }));
   box.appendChild(row);
