@@ -1102,7 +1102,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 9" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 10" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1174,7 +1174,7 @@ function isoWeek(dt) {
 }
 const BASE_CHIPS = [["off","Выходной"],["morning","Утро 8"],["morning12","Утро 12"],["day","День 8"],["day12","День 12"],["night8","Ночь 8"],["night12","Ночь 12"]];
 function openSheet(d) {
-  state.sheetDay = d; state.sheetType = getShift(d).type; state.sheetNote = state.notes[key(d)] || ""; state.showBreakdown = false;
+  state.sheetDay = d; state.sheetType = getShift(d).type; state.sheetTor = state.sheetType.indexOf("tor_") === 0; state.sheetNote = state.notes[key(d)] || ""; state.showBreakdown = false;
   render();
 }
 function closeSheet() { state.sheetDay = null; render(); }
@@ -1201,18 +1201,23 @@ function renderDaySheet() {
     m.appendChild(box);
   }
   m.appendChild(el("div", { class:"field-label", text:"Смена" }));
-  const isTor = t.indexOf("tor_") === 0;
-  const base = isTor ? t.slice(4) : t;
+  const isTor = !!state.sheetTor;
+  const base = t.indexOf("tor_") === 0 ? t.slice(4) : t;
   const chips = el("div", { class:"sheet-chips" });
   BASE_CHIPS.forEach(([k, lab]) => {
     const c = el("button", { class:"schip" + (base===k ? " on" : ""), text: lab, style: k==="off" ? "" : "background:" + SHIFT_TYPES[k].color + ";color:#fff" });
-    c.addEventListener("click", () => { state.sheetType = (isTor && k !== "off") ? "tor_" + k : k; render(); });
+    c.addEventListener("click", () => { if (k === "off") state.sheetTor = false; state.sheetType = (state.sheetTor && k !== "off") ? "tor_" + k : k; render(); });
     chips.appendChild(c);
   });
   const torC = el("button", { class:"schip" + (isTor ? " on" : ""), text:"⚡ Торанута" + (isTor ? " ✓" : ""), style: isTor ? "background:#6d28d9;color:#fff" : "" });
-  torC.addEventListener("click", () => { if (base === "off") return; state.sheetType = isTor ? base : "tor_" + base; render(); });
+  torC.addEventListener("click", () => {
+    state.sheetTor = !isTor;
+    if (base !== "off") state.sheetType = state.sheetTor ? "tor_" + base : base;
+    render();
+  });
   chips.appendChild(torC);
   m.appendChild(chips);
+  if (isTor && base === "off") m.appendChild(el("div", { style:"font-size:12px;color:#c4b5fd;margin:-4px 0 12px", text:"⚡ Торанута в выходной — теперь выбери смену (утро, день или ночь)." }));
 
   m.appendChild(el("div", { class:"field-label", text:"Заметка" }));
   const ta = el("textarea", { class:"note-ta", placeholder:"Например: 8:30 врач" });
