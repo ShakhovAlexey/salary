@@ -377,7 +377,7 @@ function saveData() {
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot,
       notes: state.notes, noteTags: state.noteTags,
-      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn,
+      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -430,6 +430,7 @@ const state = {
   goalNet: saved.goalNet || 0,
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
+  hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1000,
   showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showForecast: false,
   selected: new Set(),
   bulkDropOpen: false,
@@ -470,11 +471,11 @@ function computeStats() {
   return { totalGross: Math.round(totalGross*100)/100, regularPay: Math.round(regularPay*100)/100, totalHours, workDays, weekly };
 }
 
-// Бонус за часы в месяце: 200–220 ч → 500 ₪, 221–240 ч → 1000 ₪
+// Бонус за часы в месяце (код 167 в листке): 200–220 ч → hb1, 221–240 ч → hb2. Пенсия с него не удерживается (сверено с июнем).
 function calcHoursBonus(h) {
   if (state.hoursBonusOn === false) return 0;
-  if (h > 220) return 1000;
-  if (h >= 200) return 500;
+  if (h > 220) return Number(state.hb2) || 0;
+  if (h >= 200) return Number(state.hb1) || 0;
   return 0;
 }
 function computeNet(stats) {
@@ -965,7 +966,7 @@ function render() {
     netCard.appendChild(netRow("Разовые выплаты (бонусы, пособия)", null, null, "extras"));
     if (state.hoursBonusOn !== false) {
       const hb = netCalc.hoursBonus, h = stats.totalHours;
-      const hint = hb === 1000 ? "" : (hb === 500 ? " · до 1000 ₪: ещё " + (221 - h) + " ч" : (h > 0 ? " · до 500 ₪: ещё " + (200 - h) + " ч" : ""));
+      const hint = h > 220 ? "" : (h >= 200 ? " · до " + state.hb2 + " ₪: ещё " + (221 - h) + " ч" : (h > 0 ? " · до " + state.hb1 + " ₪: ещё " + (200 - h) + " ч" : ""));
       netCard.appendChild(netRow("Бонус за часы (" + h + " ч)" + hint, hb.toLocaleString() + " ₪", hb ? "#34d399" : "#64748b"));
     }
     const grossTotalRow = el("div", { class:"net-row", style:"padding-top:6px;border-top:1px dashed #134e3a" });
@@ -1006,10 +1007,21 @@ function render() {
     caretToEnd(mh); mh.addEventListener("input", e => { state.maxHours = toNum(e.target.value) || 240; saveData(); });
     extra.appendChild(mh);
     const hbt = el("button", { class:"toggle-btn" + (state.hoursBonusOn !== false ? " on" : ""), style:"margin-top:12px" });
-    hbt.appendChild(el("span", { text:"Бонус за часы: 200–220 ч → 500 ₪, 221–240 ч → 1000 ₪" }));
+    hbt.appendChild(el("span", { text:"Бонус за часы (код 167)" }));
     hbt.appendChild(el("span", { class:"toggle-pill" + (state.hoursBonusOn !== false ? " on" : ""), text: state.hoursBonusOn !== false ? "ВКЛ" : "ВЫКЛ" }));
     hbt.addEventListener("click", () => { state.hoursBonusOn = state.hoursBonusOn === false; saveData(); render(); });
     extra.appendChild(hbt);
+    if (state.hoursBonusOn !== false) {
+      const two = el("div", { style:"display:flex;gap:8px;margin-top:8px" });
+      [["200–220 ч, ₪", "hb1"], ["221–240 ч, ₪", "hb2"]].forEach(([lab, k]) => {
+        const box = el("div", { style:"flex:1" });
+        box.appendChild(el("div", { class:"field-label", text: lab }));
+        const i = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state[k]) });
+        caretToEnd(i); i.addEventListener("input", e => { state[k] = toNum(e.target.value); saveData(); });
+        box.appendChild(i); two.appendChild(box);
+      });
+      extra.appendChild(two);
+    }
     const ht = el("button", { class:"toggle-btn" + (state.holidaysOn ? " on" : ""), style:"margin-top:12px" });
     ht.appendChild(el("span", { text:"Праздники Израиля — оплата как шабат" }));
     ht.appendChild(el("span", { class:"toggle-pill" + (state.holidaysOn ? " on" : ""), text: state.holidaysOn ? "ВКЛ" : "ВЫКЛ" }));
@@ -1209,7 +1221,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 16" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 17" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
