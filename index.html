@@ -429,7 +429,7 @@ const state = {
   holidayOverrides: saved.holidayOverrides || {},
   goalNet: saved.goalNet || 0,
   maxHours: saved.maxHours || 240,
-  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null,
+  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showForecast: false,
   selected: new Set(),
   bulkDropOpen: false,
   dayDropOpen: false,
@@ -978,6 +978,7 @@ function render() {
 
     wrap.appendChild(netCard);
 
+    wrap.appendChild(renderForecast());
     wrap.appendChild(renderYearStats());
 
     const extra = el("div", { class:"settings-card" });
@@ -1189,7 +1190,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 14" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 15" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1365,6 +1366,100 @@ function renderPlanner() {
   mdl.appendChild(cl);
   ov.appendChild(mdl);
   return ov;
+}
+// ── Прогноз «если работать до лимита часов» на 12 месяцев ──
+// Пустые месяцы достраиваются по циклу графика, выровненному по последним введённым сменам.
+function cycleArray() { const c = []; state.cycleTemplate.forEach(b => { for (let i = 0; i < b.count; i++) c.push(b.isOff ? "off" : b.type); }); return c; }
+function projectShifts(y0, m0, months) {
+  const map = JSON.parse(JSON.stringify(state.shifts));
+  const cyc = cycleArray();
+  const keys = Object.keys(map).filter(k => map[k] && map[k].type).sort();
+  if (!cyc.length || !keys.length) return { map, projected: {} };
+  const last = keys[keys.length - 1];
+  const lastDate = new Date(+last.slice(0,4), +last.slice(5,7) - 1, +last.slice(8,10));
+  // подбираем сдвиг цикла, лучше всего совпадающий с последними 28 днями
+  const work = (t) => t && t !== "off";
+  let bestOff = 0, bestScore = -1;
+  for (let off = 0; off < cyc.length; off++) {
+    let sc = 0;
+    for (let i = 0; i < 28; i++) {
+      const dt = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate() - i);
+      const s0 = map[dkey(dt.getFullYear(), dt.getMonth(), dt.getDate())];
+      const t = s0 ? s0.type : "off";
+      const c = cyc[((off - i) % cyc.length + cyc.length) % cyc.length];
+      if (baseType(t) === c) sc += 2; else if (work(t) === work(c)) sc += 1;
+    }
+    if (sc > bestScore) { bestScore = sc; bestOff = off; }
+  }
+  const projected = {};
+  const end = new Date(y0, m0 + months, 0);
+  let i = 1;
+  for (let dt = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate() + 1); dt <= end; dt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1), i++) {
+    const k = dkey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    if (map[k]) continue;
+    const t = cyc[(bestOff + i) % cyc.length];
+    if (t !== "off") map[k] = { type: t };
+    projected[k.slice(0,7)] = true;
+  }
+  return { map, projected };
+}
+function forecastMax(months) {
+  const y0 = state.year, m0 = state.month, keepShifts = state.shifts;
+  const now = new Date();
+  const startY = now.getFullYear(), startM = now.getMonth();
+  const pr = projectShifts(startY, startM, months);
+  const rows = [];
+  try {
+    state.shifts = pr.map;
+    for (let i = 0; i < months; i++) {
+      const dt = new Date(startY, startM + i, 1);
+      state.year = dt.getFullYear(); state.month = dt.getMonth();
+      const st = computeStats();
+      const base = computeNet(st).net;
+      const p = planExtra(Infinity);
+      rows.push({ y: state.year, m: state.month, hours: st.totalHours, base, maxNet: p.error ? base : p.endNet, maxHours: p.error ? st.totalHours : p.endHours,
+                  projected: !!pr.projected[dkey(state.year, state.month, 1).slice(0,7)] });
+    }
+  } finally { state.shifts = keepShifts; state.year = y0; state.month = m0; }
+  return rows;
+}
+function renderForecast() {
+  const card = el("div", { class:"settings-card" });
+  const cap = state.maxHours || 240;
+  const head = el("div", { class:"title", style:"cursor:pointer;display:flex;justify-content:space-between;margin-bottom:0", text:"" });
+  head.appendChild(el("span", { text:"💰 Если работать " + cap + " ч в месяц — сколько получу" }));
+  head.appendChild(el("span", { text: state.showForecast ? "▴" : "▾" }));
+  head.addEventListener("click", () => { state.showForecast = !state.showForecast; render(); });
+  card.appendChild(head);
+  if (!state.showForecast) return card;
+  const rows = forecastMax(12);
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:8px 0", text:"12 месяцев вперёд. Твой график + доп. часы до " + cap + " ч (правило 7 дней подряд, самые выгодные часы). Месяцы без смен достроены по циклу графика (≈). Премия — как задана для месяца." }));
+  const t = el("div", { style:"font-size:12px" });
+  const hdr = el("div", { style:"display:grid;grid-template-columns:1.2fr 1fr 1fr .8fr;gap:4px;color:#64748b;padding:4px 0;border-bottom:1px solid #334155" });
+  ["Месяц","По графику","До " + cap + " ч","Разница"].forEach(x => hdr.appendChild(el("div", { text:x, style: x==="Месяц" ? "" : "text-align:right" })));
+  t.appendChild(hdr);
+  let sb = 0, sm = 0;
+  rows.forEach(r => {
+    sb += r.base; sm += r.maxNet;
+    const row = el("div", { style:"display:grid;grid-template-columns:1.2fr 1fr 1fr .8fr;gap:4px;padding:5px 0;border-bottom:1px solid #1e293b;align-items:center" });
+    row.appendChild(el("div", { text: MONTHS_RU[r.m].slice(0,3) + " " + String(r.y).slice(2) + (r.projected ? " ≈" : ""), style:"color:#cbd5e1;font-weight:600" }));
+    const c1 = el("div", { style:"text-align:right" }); c1.appendChild(el("div", { text: Math.round(r.base).toLocaleString() + " ₪", style:"color:#e2e8f0" })); c1.appendChild(el("div", { text: r.hours + " ч", style:"font-size:10px;color:#64748b" }));
+    const c2 = el("div", { style:"text-align:right" }); c2.appendChild(el("div", { text: Math.round(r.maxNet).toLocaleString() + " ₪", style:"color:#34d399;font-weight:700" })); c2.appendChild(el("div", { text: r.maxHours + " ч", style:"font-size:10px;color:#64748b" }));
+    row.appendChild(c1); row.appendChild(c2);
+    row.appendChild(el("div", { text: "+" + Math.round(r.maxNet - r.base).toLocaleString(), style:"text-align:right;color:#a7f3d0" }));
+    row.style.cursor = "pointer";
+    row.addEventListener("click", () => { state.year = r.y; state.month = r.m; state.view = "calendar"; saveData(); render(); });
+    t.appendChild(row);
+  });
+  const tot = el("div", { style:"display:grid;grid-template-columns:1.2fr 1fr 1fr .8fr;gap:4px;padding:7px 0 0;font-weight:800" });
+  tot.appendChild(el("div", { text:"За 12 мес" }));
+  tot.appendChild(el("div", { text: Math.round(sb).toLocaleString(), style:"text-align:right" }));
+  tot.appendChild(el("div", { text: Math.round(sm).toLocaleString(), style:"text-align:right;color:#34d399" }));
+  tot.appendChild(el("div", { text: "+" + Math.round(sm - sb).toLocaleString(), style:"text-align:right;color:#a7f3d0" }));
+  t.appendChild(tot);
+  card.appendChild(t);
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:8px", text:"Нажми на месяц — откроется календарь, там кнопка 🧠 покажет конкретные дни." }));
+  return card;
 }
 function renderGoal(stats, net) {
   const g = Number(state.goalNet) || 0;
