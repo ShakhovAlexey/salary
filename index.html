@@ -185,6 +185,49 @@
   .apply-btn { width:100%; padding:12px; border-radius:12px; border:none; background:#3b82f6; color:#fff; font-size:15px; font-weight:700; cursor:pointer; margin-bottom:8px; }
   .cancel-btn { width:100%; padding:10px; border-radius:12px; border:none; background:#334155; color:#94a3b8; font-size:14px; cursor:pointer; }
   .auto-btn { padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-size:12px; font-weight:600; background:#7c3aed; color:#fff; white-space:nowrap; }
+
+  /* ── Дизайн-система: токены, сетка 8pt, касание ≥44px ── */
+  :root { --bg:#0b1120; --surface:#151e30; --surface-2:#1e293b; --line:#26324a; --text:#e5e9f0; --muted:#94a3b8; --subtle:#64748b;
+          --accent:#60a5fa; --accent-bg:#1d3a6b; --ok:#34d399; --warn:#fbbf24; --bad:#fb7185; --r:16px; }
+  html, body { background:var(--bg); color:var(--text); }
+  body { font-family:-apple-system, "Segoe UI", Roboto, system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  #app { padding-bottom:calc(84px + env(safe-area-inset-bottom)); }
+  .header { background:rgba(11,17,32,.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid var(--line);
+            padding:calc(8px + env(safe-area-inset-top)) 8px 8px; }
+  .header-top { margin-bottom:0; min-height:52px; }
+  .nav-btn { background:transparent; width:44px; height:44px; border-radius:22px; font-size:26px; color:var(--muted); }
+  .nav-btn:active { background:var(--surface-2); }
+  .month-title .name { font-size:18px; font-weight:700; letter-spacing:.2px; }
+  .month-title .sub { font-size:13px; color:var(--ok); font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .cal-actions { display:flex; gap:8px; justify-content:center; padding-top:8px; }
+  .chip-btn { min-height:36px; padding:0 16px; border-radius:18px; border:1px solid var(--line); background:var(--surface); color:var(--muted); font-size:13px; font-weight:600; cursor:pointer; }
+  .chip-btn.active { background:#0f766e; border-color:#0f766e; color:#fff; }
+  .bottom-bar { padding:6px 4px calc(6px + env(safe-area-inset-bottom)); background:rgba(15,22,38,.96); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+                border-top:1px solid var(--line); display:flex; justify-content:space-around; z-index:60; }
+  .nav-item { flex:1; background:none; border:none; color:var(--subtle); display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0; min-height:56px; cursor:pointer; }
+  .nav-ico { width:56px; height:30px; border-radius:15px; display:flex; align-items:center; justify-content:center; transition:background .2s; }
+  .nav-lab { font-size:11px; font-weight:600; }
+  .nav-item.active { color:var(--text); }
+  .nav-item.active .nav-ico { background:var(--accent-bg); color:var(--accent); }
+  .summary-padding { padding:12px 12px 8px; }
+  .section-h { font-size:12px; font-weight:700; color:var(--subtle); text-transform:uppercase; letter-spacing:.08em; margin:20px 4px 8px; }
+  .section-h:first-child { margin-top:4px; }
+  .settings-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:16px; margin-top:12px; }
+  .section-h + .settings-card { margin-top:0; }
+  .settings-card .title { font-size:16px; font-weight:700; color:var(--text); margin-bottom:12px; }
+  .field-label { font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .num-input { min-height:44px; border-radius:10px; background:var(--bg); border-color:var(--line); }
+  .num-input:focus { outline:none; border-color:var(--accent); }
+  .toggle-btn { min-height:48px; border-radius:12px; font-size:14px; background:var(--surface-2); justify-content:space-between; padding:10px 14px; }
+  .toggle-btn:not(:has(.toggle-pill)) { justify-content:center; }
+  .primary-btn { display:flex; align-items:center; justify-content:center; width:100%; min-height:48px; border-radius:12px; border:none; background:#2563eb; color:#fff; font-size:15px; font-weight:700; cursor:pointer; text-decoration:none; }
+  .primary-btn:active { background:#1d4ed8; }
+  .hint { font-size:12px; color:var(--subtle); margin-top:8px; line-height:1.4; }
+  .reset-btn { margin-top:12px; min-height:48px; border-radius:12px; }
+  .gross-card, .net-card { border-radius:var(--r); }
+  .gross-card { margin-bottom:12px; }
+  .net-card { margin:12px 0; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 </style>
 </head>
 <body>
@@ -771,6 +814,14 @@ function renderShiftDropdownItems(onSelect, currentVal) {
   return container;
 }
 
+// Иконки нижней панели (обводка, 24px)
+const svg = (d) => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+const ICONS = {
+  cal: svg('<rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>'),
+  money: svg('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/>'),
+  alarm: svg('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 2M4.5 4.5 2.5 6.5M19.5 4.5l2 2"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')
+};
 // ───────────────────────── MAIN RENDER ─────────────────────────
 function render() {
   const app = document.getElementById("app");
@@ -786,29 +837,21 @@ function render() {
   const headerTop = el("div", { class:"header-top" });
   headerTop.appendChild(el("button", { class:"nav-btn", text:"‹", onclick: () => changeMonth(-1) }));
   const titleBox = el("div", { class:"month-title" });
-  titleBox.appendChild(el("div", { class:"name", text: MONTHS_RU[state.month] + " " + state.year }));
-  titleBox.appendChild(el("div", { class:"rate", text: "Ставка: " + curRate() + " ₪/ч" }));
+  const monthView = state.view === "calendar" || state.view === "salary";
+  titleBox.appendChild(el("div", { class:"name", text: monthView ? MONTHS_RU[state.month] + " " + state.year : (state.view === "alarm" ? "Будильник" : "Настройки") }));
+  if (monthView) titleBox.appendChild(el("div", { class:"sub", id:"hdr-net", text: Math.round(netCalc.net).toLocaleString() + " ₪ нетто · " + stats.totalHours + " ч" }));
   headerTop.appendChild(titleBox);
   headerTop.appendChild(el("button", { class:"nav-btn", text:"›", onclick: () => changeMonth(1) }));
+  if (!monthView) [...headerTop.querySelectorAll(".nav-btn")].forEach(b => b.style.visibility = "hidden");
   header.appendChild(headerTop);
 
-  const tabs = el("div", { class:"tabs" });
-  ["calendar","summary"].forEach(v => {
-    const label = v==="calendar" ? "📅 Календарь" : "📊 Итоги";
-    tabs.appendChild(el("button", {
-      class: "tab-btn" + (state.view===v ? " active" : ""), text: label,
-      onclick: () => { state.view = v; render(); }
-    }));
-  });
-  const multiBtn = el("button", {
-    class: "multi-btn" + (state.multiMode ? " active" : ""),
-    text: state.multiMode ? "✓ Выбор" : "☐ Выбор",
-    onclick: () => { state.multiMode = !state.multiMode; state.selected = new Set(); state.bulkDropOpen=false; render(); }
-  });
-  tabs.appendChild(multiBtn);
-  const autoBtn = el("button", { class:"auto-btn", text:"🔄", onclick: () => { state.showAutoModal = true; render(); } });
-  tabs.appendChild(autoBtn);
-  header.appendChild(tabs);
+  if (state.view === "calendar") {
+    const acts = el("div", { class:"cal-actions" });
+    acts.appendChild(el("button", { class:"chip-btn" + (state.multiMode ? " active" : ""), text: state.multiMode ? "✓ Готово" : "Выбрать дни",
+      onclick: () => { state.multiMode = !state.multiMode; state.selected = new Set(); state.bulkDropOpen=false; render(); } }));
+    acts.appendChild(el("button", { class:"chip-btn", text:"Автографик", onclick: () => { state.showAutoModal = true; render(); } }));
+    header.appendChild(acts);
+  }
 
   // Bulk action bar
   if (state.multiMode && state.selected.size > 0) {
@@ -843,13 +886,9 @@ function render() {
   if (state.view === "calendar") {
     // сводка месяца
     const ms = el("div", { class:"msum" });
-    [["Смен", stats.workDays], ["Часов", stats.totalHours], ["Брутто", Math.round(netCalc.gross).toLocaleString() + " ₪"], ["Нетто", Math.round(netCalc.net).toLocaleString() + " ₪"]]
-      .forEach((p, i) => { const d = el("div", { class: i===3 ? "nn" : "" }); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { text: String(p[1]) })); ms.appendChild(d); });
+    [["Смен", stats.workDays], ["Часов", stats.totalHours + (state.maxHours ? " / " + state.maxHours : "")], ["Брутто", Math.round(netCalc.gross).toLocaleString() + " ₪"]]
+      .forEach((p, i) => { const d = el("div"); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { text: String(p[1]) })); ms.appendChild(d); });
     app.appendChild(ms);
-    if (state.goalNet > 0) app.appendChild(renderGoal(stats, netCalc));
-    const pb = el("button", { class:"toggle-btn", style:"margin:4px 6px 2px;width:calc(100% - 12px);justify-content:center;background:#4c1d95", text:"🧠 Подобрать доп. часы до цели" });
-    pb.addEventListener("click", () => { state.showPlanner = true; state.plannerResult = state.goalNet > 0 ? planExtra(state.goalNet) : null; render(); });
-    app.appendChild(pb);
 
     const grid = el("div", { class:"cal-wrap" });
     grid.appendChild(el("div"));
@@ -907,8 +946,9 @@ function render() {
   }
 
   // ── SUMMARY VIEW ──
-  if (state.view === "summary") {
-    const wrap = el("div", { class:"summary-padding" });
+  if (state.view === "salary" || state.view === "settings") {
+    const salaryWrap = el("div", { class:"summary-padding" }), settingsWrap = el("div", { class:"summary-padding" });
+    let wrap = salaryWrap;
 
     const grossCard = el("div", { class:"gross-card" });
     grossCard.appendChild(el("div", { class:"label", text:"Брутто за " + MONTHS_RU[state.month] }));
@@ -921,62 +961,13 @@ function render() {
       statsRow.appendChild(s);
     });
     grossCard.appendChild(statsRow);
-    wrap.appendChild(grossCard);
-
-    // По неделям — компактный список, неделя раскрывается в дни, день — в расчёт по коэффициентам
-    wrap.appendChild(el("div", { class:"section-label", text:"ПО НЕДЕЛЯМ · нажми, чтобы раскрыть" }));
-    const wkBox = el("div", { class:"wk-box" });
-    const mShort = MONTHS_RU[state.month].slice(0,3).toLowerCase();
-    let d0 = 1;
-    while (d0 <= daysInMonth) {
-      const dow0 = new Date(state.year, state.month, d0).getDay();
-      const d1 = Math.min(daysInMonth, d0 + (6 - dow0));
-      const days = [];
-      let wg = 0, wh = 0;
-      for (let d = d0; d <= d1; d++) {
-        const sh = getShift(d);
-        if (sh.type === "off") continue;
-        const r = calcShift(sh.type, shabKind(state.year, state.month, d), curRate());
-        days.push({ d, sh, r }); wg += r.total; wh += (SHIFT_TYPES[sh.type].hours || 0);
-      }
-      const wk = isoWeek(new Date(state.year, state.month, d0));
-      const wKey = state.year + "-" + state.month + "-" + d0;
-      const open = state.openWeeks.has(wKey);
-      const row = el("div", { class:"wk-row" + (open ? " open" : "") });
-      row.appendChild(el("span", { class:"wk-n", text: "Нед. " + wk }));
-      row.appendChild(el("span", { class:"wk-d", text: d0 + (d1>d0 ? "–" + d1 : "") + " " + mShort + " · " + days.length + " см · " + wh + "ч" }));
-      row.appendChild(el("span", { class:"wk-g", text: Math.round(wg).toLocaleString() + " ₪" }));
-      row.appendChild(el("span", { class:"wk-ar", text: days.length ? (open ? "▴" : "▾") : "" }));
-      const startD = d0;
-      row.addEventListener("click", () => { if (!days.length) return; if (open) state.openWeeks.delete(wKey); else state.openWeeks.add(wKey); render(); });
-      wkBox.appendChild(row);
-      if (open) {
-        days.forEach(({ d, sh, r }) => {
-          const def = SHIFT_TYPES[sh.type];
-          const tor = def.group === "torranuta";
-          const dOpen = state.openDay === d;
-          const dr = el("div", { class:"dy-row" });
-          dr.appendChild(el("span", { class:"dy-dot", style:"background:" + def.color + (tor ? ";box-shadow:0 0 0 2px #c4b5fd" : "") }));
-          dr.appendChild(el("span", { class:"dy-d", text: d + " " + HE_DAYS[new Date(state.year, state.month, d).getDay()] }));
-          dr.appendChild(el("span", { class:"dy-s", text: (tor ? "⚡" : "") + def.label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim() + (isSabbath(state.year, state.month, d) || (state.holidaysOn && holidayName(state.year, state.month, d)) ? " ✡" : "") }));
-          dr.appendChild(el("span", { class:"dy-g", text: Math.round(r.total).toLocaleString() + " ₪" }));
-          dr.addEventListener("click", () => { state.openDay = dOpen ? null : d; render(); });
-          wkBox.appendChild(dr);
-          if (dOpen) {
-            const bd = el("div", { class:"dy-bd" });
-            r.breakdown.forEach(b => bd.appendChild(el("span", { text: b.hrs + "ч×" + b.pct + "% = " + b.sum + "₪" })));
-            wkBox.appendChild(bd);
-          }
-        });
-      }
-      d0 = d1 + 1;
-    }
-    wrap.appendChild(wkBox);
 
     // Net salary card
     const netCard = el("div", { class:"net-card" });
-    netCard.appendChild(el("div", { class:"label", text:"Прогноз НЕТТО (на руки)" }));
+    netCard.appendChild(el("div", { class:"label", text:"На руки за " + MONTHS_RU[state.month].toLowerCase() }));
     netCard.appendChild(el("div", { id:"net-value", class:"value", text: Math.round(netCalc.net).toLocaleString() + " ₪" }));
+    netCard.appendChild(el("div", { class:"hint", style:"margin:0 0 12px;font-size:13px;color:#94a3b8",
+      text: stats.workDays + " смен · " + stats.totalHours + " ч · " + (stats.totalHours ? Math.round(netCalc.gross / stats.totalHours) : 0) + " ₪/ч брутто" }));
 
     function netRow(label, value, color, isInput, id) {
       const row = el("div", { class:"net-row" });
@@ -1030,19 +1021,15 @@ function render() {
 
     wrap.appendChild(netCard);
 
-    if (IN_APP) wrap.appendChild(renderAppAlarmCard());
     wrap.appendChild(renderPayslipCard(netCalc));
+    wrap = settingsWrap;
     wrap.appendChild(renderTimesheetCard());
     wrap.appendChild(renderForecast());
     wrap.appendChild(renderYearStats());
 
     const extra = el("div", { class:"settings-card" });
-    extra.appendChild(el("div", { class:"title", text:"🎯 Цель и праздники" }));
-    extra.appendChild(el("div", { class:"field-label", text:"Цель нетто на месяц, ₪ (0 — не показывать)" }));
-    const gi = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.goalNet || "") , placeholder:"0" });
-    caretToEnd(gi); gi.addEventListener("input", e => { state.goalNet = toNum(e.target.value); saveData(); });
-    extra.appendChild(gi);
-    extra.appendChild(el("div", { class:"field-label", style:"margin-top:10px", text:"Лимит часов в месяц" }));
+    extra.appendChild(el("div", { class:"title", text:"Часы, бонус и праздники" }));
+    extra.appendChild(el("div", { class:"field-label", text:"Лимит часов в месяц" }));
     const mh = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.maxHours || 240) });
     caretToEnd(mh); mh.addEventListener("input", e => { state.maxHours = toNum(e.target.value) || 240; saveData(); });
     extra.appendChild(mh);
@@ -1068,10 +1055,27 @@ function render() {
     ht.addEventListener("click", () => { state.holidaysOn = !state.holidaysOn; saveData(); render(); });
     extra.appendChild(ht);
     extra.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Встроены праздники 2023–2030. С 17:00 кануна до 17:00 праздника — как шабат. Любой день можно отметить или снять в окне дня." }));
-    const wz = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center", text:"🧭 Пройти мастер настройки заново" });
-    wz.addEventListener("click", () => { state.showWizard = true; state.wizStep = 0; render(); });
-    extra.appendChild(wz);
     wrap.appendChild(extra);
+
+    const plan = el("div", { class:"settings-card" });
+    plan.appendChild(el("div", { class:"title", text:"Цель на месяц" }));
+    plan.appendChild(el("div", { class:"field-label", text:"Цель нетто, ₪" }));
+    const gi = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: String(state.goalNet || ""), placeholder:"например 17000" });
+    caretToEnd(gi); gi.addEventListener("input", e => { state.goalNet = toNum(e.target.value); saveData(); });
+    plan.appendChild(gi);
+    if (state.goalNet > 0) { const g = renderGoal(stats, netCalc); g.style.margin = "10px 0 0"; plan.appendChild(g); }
+    const pb = el("button", { class:"primary-btn", style:"margin-top:10px", text:"Подобрать доп. часы до цели" });
+    pb.addEventListener("click", () => { state.showPlanner = true; state.plannerResult = state.goalNet > 0 ? planExtra(state.goalNet) : null; render(); });
+    plan.appendChild(pb);
+    plan.appendChild(el("div", { class:"hint", text:"Для месяца, открытого в календаре. Правила: не больше 7 дней подряд и " + (state.maxHours || 240) + " ч в месяц." }));
+    wrap.appendChild(plan);
+
+    const misc = el("div", { class:"settings-card" });
+    misc.appendChild(el("div", { class:"title", text:"Прочее" }));
+    const wz = el("button", { class:"toggle-btn", text:"Пройти мастер настройки заново" });
+    wz.addEventListener("click", () => { state.showWizard = true; state.wizStep = 0; render(); });
+    misc.appendChild(wz);
+    wrap.appendChild(misc);
 
     // Annual projection card
     const yr = computeYear();
@@ -1275,7 +1279,6 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 26" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1287,9 +1290,46 @@ function render() {
         render();
       }
     }});
-    wrap.appendChild(resetBtn);
+    misc.appendChild(resetBtn);
+    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 27" }));
 
-    app.appendChild(wrap);
+    // Настройки: раскладываем карточки по разделам
+    const groups = [["Данные", ["Заполнить месяц из табеля", "Резервная копия"]],
+                    ["Расчёт зарплаты", ["Часовая ставка", "Параметры расчёта налогов", "Часы, бонус", "торран"]],
+                    ["Планы и статистика", ["Цель на месяц", "Если работать", "Статистика за", "Годовой прогноз"]],
+                    ["", ["Прочее"]]];
+    const cards = [...settingsWrap.children];
+    const titleOf = (c) => { const t = c.querySelector(".title"); return t ? t.textContent : ""; };
+    const used = new Set();
+    settingsWrap.innerHTML = "";
+    groups.forEach(([name, keys]) => {
+      const list = [];
+      keys.forEach(k => cards.forEach(c => { if (!used.has(c) && list.indexOf(c) < 0 && titleOf(c).toLowerCase().indexOf(k.toLowerCase()) >= 0) list.push(c); }));
+      if (!list.length) return;
+      if (name) settingsWrap.appendChild(el("div", { class:"section-h", text: name }));
+      list.forEach(c => { used.add(c); settingsWrap.appendChild(c); });
+    });
+    cards.filter(c => !used.has(c)).forEach(c => settingsWrap.appendChild(c));
+    const clean = (t) => t.replace(/^[^0-9A-Za-zА-Яа-яЁё]+/, "");
+    [settingsWrap, salaryWrap].forEach(w => w.querySelectorAll(".settings-card > .title").forEach(t => {
+      const first = t.firstElementChild; if (first) first.textContent = clean(first.textContent); else t.textContent = clean(t.textContent); }));
+    app.appendChild(state.view === "salary" ? salaryWrap : settingsWrap);
+  }
+
+  // ── ALARM VIEW ──
+  if (state.view === "alarm") {
+    const w = el("div", { class:"summary-padding" });
+    if (IN_APP) w.appendChild(renderAppAlarmCard());
+    else {
+      const c = el("div", { class:"settings-card" });
+      c.appendChild(el("div", { class:"title", text:"Громкий будильник на каждую смену" }));
+      c.appendChild(el("div", { class:"hint", style:"font-size:13px;margin-bottom:12px", text:"В браузере телефон не разрешает ставить будильники. Они работают в Android-приложении «Зарплата»: сами ставятся на все смены, звонят поверх блокировки, есть виджет на главный экран." }));
+      const dl = el("a", { class:"primary-btn", href:"Zarplata.apk", download:"Zarplata.apk", text:"Скачать приложение (APK)" });
+      c.appendChild(dl);
+      c.appendChild(el("div", { class:"hint", text:"После установки перенеси данные: Настройки → Резервная копия → «Скопировать данные», затем в приложении «Вставить данные»." }));
+      w.appendChild(c);
+    }
+    app.appendChild(w);
   }
 
   // ── Auto-schedule modal ──
@@ -1302,14 +1342,14 @@ function render() {
   if (state.showPlanner) app.appendChild(renderPlanner());
 
   // ── BOTTOM BAR ──
-  const bottomStats = computeStats();
-  const bottomNet = computeNet(bottomStats);
-  const bottomBar = el("div", { class:"bottom-bar" });
-  bottomBar.appendChild(el("div", { class:"left", text: bottomStats.workDays + " смен · " + bottomStats.totalHours + "ч" }));
-  const right = el("div", { class:"right" });
-  right.appendChild(el("div", { id:"bottom-gross", class:"g", text:"брутто " + Math.round(bottomNet.gross).toLocaleString() + " ₪" }));
-  right.appendChild(el("div", { id:"bottom-net",   class:"n", text: Math.round(bottomNet.net).toLocaleString() + " ₪ нетто" }));
-  bottomBar.appendChild(right);
+  const bottomBar = el("nav", { class:"bottom-bar" });
+  [["calendar","Календарь",ICONS.cal],["salary","Зарплата",ICONS.money],["alarm","Будильник",ICONS.alarm],["settings","Настройки",ICONS.gear]].forEach(([v, lab, ic]) => {
+    const b = el("button", { class:"nav-item" + (state.view === v ? " active" : ""), "aria-label": lab });
+    const ico = el("span", { class:"nav-ico" }); ico.innerHTML = ic;
+    b.appendChild(ico); b.appendChild(el("span", { class:"nav-lab", text: lab }));
+    b.addEventListener("click", () => { if (state.view === v) return; state.view = v; state.multiMode = false; saveData(); render(); window.scrollTo(0, 0); });
+    bottomBar.appendChild(b);
+  });
   app.appendChild(bottomBar);
 
   // всё содержимое между шапкой и нижней панелью — в «страницу», которую двигает свайп
@@ -1325,6 +1365,7 @@ function render() {
 function updateNetDisplay() {
   const stats = computeStats();
   const net = computeNet(stats);
+  { const h = document.getElementById("hdr-net"); if (h) h.textContent = Math.round(net.net).toLocaleString() + " ₪ нетто · " + stats.totalHours + " ч"; }
 
   const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
 
@@ -1716,7 +1757,7 @@ function renderPayslipCard(netCalc) {
   head.addEventListener("click", () => { state.showPayslip = !open; render(); });
   card.appendChild(head);
   if (pn !== undefined) card.appendChild(el("div", { style:"font-size:12px;margin-top:6px;color:" + (Math.abs(netCalc.net - pn) < 50 ? "#34d399" : "#fbbf24"),
-    text:"Сверка: приложение " + Math.round(netCalc.net).toLocaleString() + " ₪ · листок " + Math.round(pn).toLocaleString() + " ₪ · разница " + Math.round(netCalc.net - pn).toLocaleString() + " ₪" }));
+    text:"Сверка: приложение " + Math.round(netCalc.net).toLocaleString() + " ₪ · листок " + Math.round(pn).toLocaleString() + " ₪ · разница " + (Math.round(netCalc.net - pn) === 0 ? "0" : Math.round(netCalc.net - pn).toLocaleString()) + " ₪" }));
   if (!open) return card;
   card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:8px 0", text:"Только для этого месяца. Пустое поле — считается по общим правилам." }));
   [["Ставка, ₪/ч (שכר שעה)", "ratesM"], ["Бонус за часы, код 167", "hbM"], ["Дмей хавраа, код 160", "recupM"], ["Зкифот (סה״כ זקיפות)", "zkifotM"],
@@ -1814,7 +1855,7 @@ function renderWizard() {
     m.appendChild(inp(state.hourlyRate, v => { state.hourlyRate = v; }));
     const rb = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center;background:#0f172a;border:1px solid #334155", text:"📥 Переношу с другого телефона — загрузить копию" });
     rb.addEventListener("click", () => {
-      state.showWizard = false; state.view = "summary"; render();
+      state.showWizard = false; state.view = "settings"; render();
       setTimeout(() => { const c = [...document.querySelectorAll(".settings-card .title")].find(x => x.textContent.indexOf("Резервная копия") >= 0); if (c) c.scrollIntoView({ behavior:"smooth", block:"start" }); }, 50);
     });
     m.appendChild(rb);
@@ -1980,7 +2021,7 @@ function changeMonth(dir, fromX) {
   const pager = () => document.getElementById("pager");
   document.addEventListener("touchstart", (e) => {
     const t = e.target;
-    if (sliding || e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || state.showPlanner ||
+    if (sliding || (state.view !== "calendar" && state.view !== "salary") || e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || state.showPlanner ||
         (t.closest && (t.closest("input,textarea,select") || t.closest(".header") || !t.closest("#pager")))) { x0 = null; return; }
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); drag = false; dx = 0;
   }, { passive: true });
@@ -2004,6 +2045,7 @@ function changeMonth(dir, fromX) {
   }, { passive: true });
 })();
 
+if (state.view === "summary") state.view = "salary";
 migratePremiums();
 render();
 if (IN_APP) setTimeout(syncApp, 500);
