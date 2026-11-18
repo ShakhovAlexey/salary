@@ -392,6 +392,7 @@ function loadSaved() {
   } catch (e) { return {}; }
 }
 function saveData() {
+  if (IN_APP) { clearTimeout(saveData.t); saveData.t = setTimeout(syncApp, 600); }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       year: state.year, month: state.month, shifts: state.shifts,
@@ -399,7 +400,7 @@ function saveData() {
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot, zkifotM: state.zkifotM,
       notes: state.notes, noteTags: state.noteTags,
-      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
+      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, alarms: state.alarms, alarmsOn: state.alarmsOn, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -451,6 +452,7 @@ const state = {
   holidaysOn: saved.holidaysOn !== undefined ? saved.holidaysOn : true,
   holidayOverrides: saved.holidayOverrides || {},
   goalNet: saved.goalNet || 0,
+  alarms: saved.alarms || {}, alarmsOn: saved.alarmsOn !== undefined ? saved.alarmsOn : true,
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
   hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1100,
@@ -1021,6 +1023,7 @@ function render() {
 
     wrap.appendChild(netCard);
 
+    if (IN_APP) wrap.appendChild(renderAppAlarmCard());
     wrap.appendChild(renderTimesheetCard());
     wrap.appendChild(renderForecast());
     wrap.appendChild(renderYearStats());
@@ -1167,6 +1170,7 @@ function render() {
     const backupJson = () => { saveData(); return localStorage.getItem(STORAGE_KEY) || "{}"; };
     const saveBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"⬇️ Сохранить данные в файл" });
     saveBtn.addEventListener("click", () => {
+      if (IN_APP) { window.Android.saveFile(backupName(), backupJson()); return; }
       const blob = new Blob([backupJson()], { type:"text/plain" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = backupName();
@@ -1174,8 +1178,13 @@ function render() {
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     });
     backup.appendChild(saveBtn);
+    if (IN_APP) {
+      const sh = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📤 Отправить данные (WhatsApp, Telegram…)" });
+      sh.addEventListener("click", () => window.Android.shareText("Калькулятор зарплаты — данные", backupJson()));
+      backup.appendChild(sh);
+    }
     try {
-      if (navigator.share) {
+      if (navigator.share && !IN_APP) {
         const shareBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📤 Отправить файл (WhatsApp, Telegram…)" });
         shareBtn.addEventListener("click", () => {
           const f = new File([backupJson()], backupName(), { type:"text/plain" });
@@ -1258,7 +1267,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 23" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 24" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1619,6 +1628,73 @@ function renderTimesheetCard() {
   card.appendChild(inp); card.appendChild(b);
   return card;
 }
+// ── Android-приложение (APK): будильник на смены и виджет ──
+const IN_APP = !!(window.Android && window.Android.isApp);
+const ALARM_DEFAULT = { morning:"04:45", day12:"08:00", day:"12:30", night8:"20:00", night12:"16:00" };
+const ALARM_NAMES = { morning:"Утро (8 и 12ч)", day12:"День 12ч (с 09:30)", day:"День (с 14:00)", night8:"Ночь 8ч", night12:"Ночь 12ч" };
+function alarmKind(t) { const b = baseType(t); return b === "morning12" ? "morning" : b; }
+function alarmTimeFor(t) { const k = alarmKind(t); return (state.alarms && state.alarms[k]) || ALARM_DEFAULT[k] || "05:00"; }
+function shiftLabel(t) { return SHIFT_TYPES[t].label.replace(/🌅|☀️|🌙|🔴|⚡|🏖/g,"").replace("Тор.","").trim(); }
+function syncApp() {
+  if (!IN_APP) return;
+  try {
+    const now = new Date(), dn = ["вс","пн","вт","ср","чт","пт","сб"], p2 = (n) => String(n).padStart(2, "0");
+    const alarms = [], shifts = [];
+    for (let i = -1; i < 60; i++) {
+      const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const s0 = state.shifts[dkey(dt.getFullYear(), dt.getMonth(), dt.getDate())];
+      if (!s0 || !s0.type || s0.type === "off" || s0.type === "vac") continue;
+      const spec = SHIFT_SPEC[baseType(s0.type)]; if (!spec) continue;
+      const st = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), Math.floor(spec.start), Math.round((spec.start % 1) * 60));
+      const en = new Date(st.getTime() + spec.hours * 3600000);
+      const [hh, mm] = alarmTimeFor(s0.type).split(":").map(Number);
+      let at = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), hh, mm);
+      if (at > st) at = new Date(at.getTime() - 86400000);
+      const day = dn[dt.getDay()] + " " + dt.getDate() + "." + p2(dt.getMonth() + 1);
+      const hm = (d) => p2(d.getHours()) + ":" + p2(d.getMinutes());
+      alarms.push({ at: at.getTime(), title: shiftLabel(s0.type) + " · " + day });
+      shifts.push({ start: st.getTime(), end: en.getTime(), label: day + " · " + shiftLabel(s0.type) + " " + hm(st) + "–" + hm(en), alarm: state.alarmsOn ? "⏰ " + hm(at) : "" });
+    }
+    // нетто за текущий месяц (по календарю, не по открытому в приложении)
+    const y0 = state.year, m0 = state.month; let net = "";
+    try { state.year = now.getFullYear(); state.month = now.getMonth(); const st = computeStats(); const n = computeNet(st);
+      net = "Нетто за " + MONTHS_RU[state.month].toLowerCase() + ": " + Math.round(n.net).toLocaleString() + " ₪ · " + st.totalHours + " ч"; }
+    finally { state.year = y0; state.month = m0; }
+    window.Android.sync(JSON.stringify({ on: state.alarmsOn !== false, alarms, shifts, net }));
+  } catch (e) { console.log("sync", e); }
+}
+function renderAppAlarmCard() {
+  const card = el("div", { class:"settings-card" });
+  card.appendChild(el("div", { class:"title", text:"⏰ Будильник на смены" }));
+  const on = state.alarmsOn !== false;
+  const tg = el("button", { class:"toggle-btn" + (on ? " on" : "") });
+  tg.appendChild(el("span", { text:"Будить на каждую смену" }));
+  tg.appendChild(el("span", { class:"toggle-pill" + (on ? " on" : ""), text: on ? "ВКЛ" : "ВЫКЛ" }));
+  tg.addEventListener("click", () => { state.alarmsOn = !on; saveData(); render(); });
+  card.appendChild(tg);
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:8px 0", text:"Время подъёма для каждой смены. Будильники ставятся сами на 60 дней вперёд и обновляются, когда меняешь график." }));
+  const grid = el("div", { style:"display:grid;grid-template-columns:1fr 1fr;gap:8px" });
+  Object.keys(ALARM_DEFAULT).forEach(k => {
+    const box = el("div");
+    box.appendChild(el("div", { class:"field-label", text: ALARM_NAMES[k] }));
+    const i = el("input", { type:"time", class:"num-input", value: (state.alarms && state.alarms[k]) || ALARM_DEFAULT[k] });
+    i.addEventListener("change", e => { state.alarms = state.alarms || {}; state.alarms[k] = e.target.value; saveData(); });
+    box.appendChild(i); grid.appendChild(box);
+  });
+  card.appendChild(grid);
+  let cnt = 0; try { cnt = window.Android.scheduledCount(); } catch (e) {}
+  card.appendChild(el("div", { style:"font-size:12px;color:#94a3b8;margin-top:10px", text:"Сейчас поставлено будильников: " + cnt }));
+  const test = el("button", { class:"toggle-btn", style:"margin-top:8px;justify-content:center", text:"🔔 Проверить: прозвонить через 1 минуту" });
+  test.addEventListener("click", () => window.Android.testAlarm());
+  card.appendChild(test);
+  let ps = {}; try { ps = JSON.parse(window.Android.permState()); } catch (e) {}
+  const warn = !ps.notif || !ps.fsi;
+  const perm = el("button", { class:"toggle-btn", style:"margin-top:8px;justify-content:center" + (warn ? ";background:#7c2d12" : ""), text: warn ? "⚠️ Дать разрешения для будильника" : "⚙️ Настройки приложения (Xiaomi)" });
+  perm.addEventListener("click", () => window.Android.openAppSettings());
+  card.appendChild(perm);
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:6px", text:"На Xiaomi включи: Автозапуск; Экран блокировки; Всплывающие окна в фоне; Контроль активности → Нет ограничений." }));
+  return card;
+}
 function renderGoal(stats, net) {
   const g = Number(state.goalNet) || 0;
   const pct = Math.min(100, Math.round(net.net / g * 100));
@@ -1894,6 +1970,7 @@ function changeMonth(dir, fromX) {
 
 migratePremiums();
 render();
+if (IN_APP) setTimeout(syncApp, 500);
 </script>
 
 <!-- PWA Service Worker -->
