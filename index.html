@@ -1267,7 +1267,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 24" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 25" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1580,7 +1580,8 @@ function parseTimesheet(lines) {
     res.months[ym] = res.months[ym] || { n: 0, tor: 0, vac: 0 };
     const dec = (line.match(/(?:^|[^\d\/.])(\d{1,2}\.\d\d)(?![\d\/])/g) || []).map(x => parseFloat(x.replace(/^[^\d]+/, "")));
     const offDay = /חופשת/.test(line);
-    const vacation = !offDay && /חופש/.test(line);
+    // оплачиваемое отсутствие: отпуск, закрытие завода в счёт отпуска/оплачиваемый день, праздник с оплатой часов
+    const vacation = (!offDay && /חופש/.test(line)) || /סגור-חו|סגור-יו/.test(line) || (dec.length > 0 && dec.length < 3 && /\|\s*חג\s*\|/.test(line));
     if (dec.length < 3) {
       if (vacation) { res.shifts[k] = { type: "vac" }; res.months[ym].vac++; }
       else if (!offDay && /[א-ת]{2,}/.test(line.replace(/[א-ת]'|ש(?=\s|\||$)/g, ""))) res.unknown.push(d + "." + (mo + 1));
@@ -1600,30 +1601,32 @@ function parseTimesheet(lines) {
   });
   return res;
 }
-function importTimesheetFile(file) {
-  const rd = new FileReader();
-  rd.onload = async () => {
+const readBuf = (f) => new Promise((ok, fail) => { const rd = new FileReader(); rd.onload = () => ok(new Uint8Array(rd.result)); rd.onerror = fail; rd.readAsArrayBuffer(f); });
+// Можно выбрать сразу несколько табелей: месяц определяется по датам внутри файла
+async function importTimesheetFile(files) {
+  {
     try {
-      const r = parseTimesheet(await pdfLines(new Uint8Array(rd.result)));
-      const yms = Object.keys(r.months).filter(ym => r.months[ym].n + r.months[ym].vac > 0);
+      let lines = [];
+      for (const f of files) lines = lines.concat(await pdfLines(await readBuf(f)));
+      const r = parseTimesheet(lines);
+      const yms = Object.keys(r.months).filter(ym => r.months[ym].n + r.months[ym].vac > 0).sort();
       if (!yms.length) { alert("В файле не нашёл смен. Это точно табель часов (rper6)?"); return; }
       const msg = yms.map(ym => { const x = r.months[ym]; return MONTHS_RU[+ym.slice(5) - 1] + " " + ym.slice(0, 4) + ": смен " + x.n + (x.tor ? " (торанут " + x.tor + ")" : "") + (x.vac ? ", отпуск " + x.vac + " дн." : ""); }).join("\n");
-      if (!confirm("Нашёл в табеле:\n" + msg + (r.unknown.length ? "\nНе распознал дни: " + r.unknown.join(", ") : "") + "\n\nЗаменить смены этих месяцев? Премии, заметки и настройки не изменятся.")) return;
+      if (!confirm("Нашёл в табеле:\n" + msg + (r.unknown.length ? "\nДни без оплаты или с неизвестной отметкой (поставлены выходными): " + r.unknown.join(", ") : "") + "\n\nЗаменить смены этих месяцев? Премии, заметки и настройки не изменятся.")) return;
       yms.forEach(ym => { Object.keys(state.shifts).forEach(k => { if (k.indexOf(ym) === 0) delete state.shifts[k]; }); });
       Object.keys(r.shifts).forEach(k => { if (yms.indexOf(k.slice(0, 7)) >= 0) state.shifts[k] = r.shifts[k]; });
       const f = yms[0]; state.year = +f.slice(0, 4); state.month = +f.slice(5) - 1; state.view = "calendar";
       saveData(); render();
     } catch (e) { alert("Не удалось прочитать PDF: " + e.message); }
-  };
-  rd.readAsArrayBuffer(file);
+  }
 }
 function renderTimesheetCard() {
   const card = el("div", { class:"settings-card" });
   card.appendChild(el("div", { class:"title", text:"📄 Заполнить месяц из табеля" }));
-  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:8px", text:"Выбери PDF табеля часов (rper6…). Смены, торануты (работа в выходной по графику) и дни отпуска проставятся сами. Премию и бонусы впиши из листка." }));
-  const inp = el("input", { type:"file", accept:"application/pdf,.pdf", style:"display:none" });
-  inp.addEventListener("change", () => { const f = inp.files && inp.files[0]; if (f) importTimesheetFile(f); inp.value = ""; });
-  const b = el("button", { class:"toggle-btn", style:"justify-content:center", text:"📄 Выбрать табель PDF" });
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:8px", text:"Выбери один или сразу несколько PDF табелей (rper6…). Месяц определяется сам по датам в файле. Смены, торануты (работа в выходной по графику) и дни отпуска проставятся сами. Премию и бонусы впиши из листка." }));
+  const inp = el("input", { type:"file", accept:"application/pdf,.pdf", multiple:"multiple", style:"display:none" });
+  inp.addEventListener("change", () => { const fs = inp.files ? [...inp.files] : []; if (fs.length) importTimesheetFile(fs); inp.value = ""; });
+  const b = el("button", { class:"toggle-btn", style:"justify-content:center", text:"📄 Выбрать табели PDF (можно несколько)" });
   b.addEventListener("click", () => inp.click());
   card.appendChild(inp); card.appendChild(b);
   return card;
