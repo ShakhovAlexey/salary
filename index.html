@@ -343,7 +343,7 @@ function mergePartial(d) {
   months.forEach(ym => {
     Object.keys(state.shifts).forEach(k => { if (k.indexOf(ym) === 0) delete state.shifts[k]; });
     Object.keys(d.shifts || {}).forEach(k => { if (k.indexOf(ym) === 0) state.shifts[k] = d.shifts[k]; });
-    ["premiums","extras","zkifotM"].forEach(f => { if (d[f] && d[f][ym] !== undefined) { state[f] = state[f] || {}; state[f][ym] = d[f][ym]; } });
+    ["premiums","extras","zkifotM","ratesM","hbM","recupM","taxM","netM"].forEach(f => { if (d[f] && d[f][ym] !== undefined) { state[f] = state[f] || {}; state[f][ym] = d[f][ym]; } });
     Object.keys(d.notes || {}).forEach(k => { if (k.indexOf(ym) === 0) state.notes[k] = d.notes[k]; });
   });
   if (d.settings) Object.keys(d.settings).forEach(k => { state[k] = d.settings[k]; });
@@ -358,12 +358,12 @@ function migratePremiums() {
 const HE_DAYS = ["вс","пн","вт","ср","чт","пт","сб"];
 const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 function isSabbath(y,m,d){ return new Date(y,m,d).getDay()===6; }
-// Оплачиваемые праздники Израиля 2023–2030 (+ дни выборов). Оплата — как шабат: с 17:00 кануна до 17:00 праздника.
+// Оплачиваемые праздники Израиля 2023–2030. День выборов на оплату смен не влияет (сверено с листком за октябрь 2026). Оплата — как шабат: с 17:00 кануна до 17:00 праздника.
 const HOLIDAYS = {};
-"2023-04-06 Песах|2023-04-12 Песах (7-й день)|2023-04-26 Йом Ацмаут|2023-05-26 Шавуот|2023-09-16 Рош ха-Шана|2023-09-17 Рош ха-Шана|2023-09-25 Йом Кипур|2023-09-30 Суккот|2023-10-07 Симхат Тора|2024-02-27 Муниципальные выборы|2024-04-23 Песах|2024-04-29 Песах (7-й день)|2024-05-14 Йом Ацмаут|2024-06-12 Шавуот|2024-10-03 Рош ха-Шана|2024-10-04 Рош ха-Шана|2024-10-12 Йом Кипур|2024-10-17 Суккот|2024-10-24 Симхат Тора|2025-04-13 Песах|2025-04-19 Песах (7-й день)|2025-05-01 Йом Ацмаут|2025-06-02 Шавуот|2025-09-23 Рош ха-Шана|2025-09-24 Рош ха-Шана|2025-10-02 Йом Кипур|2025-10-07 Суккот|2025-10-14 Симхат Тора|2026-04-02 Песах|2026-04-08 Песах (7-й день)|2026-04-22 Йом Ацмаут|2026-05-22 Шавуот|2026-09-12 Рош ха-Шана|2026-09-13 Рош ха-Шана|2026-09-21 Йом Кипур|2026-09-26 Суккот|2026-10-03 Симхат Тора|2026-10-27 Выборы в Кнессет|2027-04-22 Песах|2027-04-28 Песах (7-й день)|2027-05-12 Йом Ацмаут|2027-06-11 Шавуот|2027-10-02 Рош ха-Шана|2027-10-03 Рош ха-Шана|2027-10-11 Йом Кипур|2027-10-16 Суккот|2027-10-23 Симхат Тора|2028-04-11 Песах|2028-04-17 Песах (7-й день)|2028-05-02 Йом Ацмаут|2028-05-31 Шавуот|2028-09-21 Рош ха-Шана|2028-09-22 Рош ха-Шана|2028-09-30 Йом Кипур|2028-10-05 Суккот|2028-10-12 Симхат Тора|2029-03-31 Песах|2029-04-06 Песах (7-й день)|2029-04-19 Йом Ацмаут|2029-05-20 Шавуот|2029-09-10 Рош ха-Шана|2029-09-11 Рош ха-Шана|2029-09-19 Йом Кипур|2029-09-24 Суккот|2029-10-01 Симхат Тора|2030-04-18 Песах|2030-04-24 Песах (7-й день)|2030-05-08 Йом Ацмаут|2030-06-07 Шавуот|2030-09-28 Рош ха-Шана|2030-09-29 Рош ха-Шана|2030-10-07 Йом Кипур|2030-10-12 Суккот|2030-10-19 Симхат Тора".split("|").forEach(p => { HOLIDAYS[p.slice(0,10)] = p.slice(11); });
+"2023-04-06 Песах|2023-04-12 Песах (7-й день)|2023-04-26 Йом Ацмаут|2023-05-26 Шавуот|2023-09-16 Рош ха-Шана|2023-09-17 Рош ха-Шана|2023-09-25 Йом Кипур|2023-09-30 Суккот|2023-10-07 Симхат Тора|2024-04-23 Песах|2024-04-29 Песах (7-й день)|2024-05-14 Йом Ацмаут|2024-06-12 Шавуот|2024-10-03 Рош ха-Шана|2024-10-04 Рош ха-Шана|2024-10-12 Йом Кипур|2024-10-17 Суккот|2024-10-24 Симхат Тора|2025-04-13 Песах|2025-04-19 Песах (7-й день)|2025-05-01 Йом Ацмаут|2025-06-02 Шавуот|2025-09-23 Рош ха-Шана|2025-09-24 Рош ха-Шана|2025-10-02 Йом Кипур|2025-10-07 Суккот|2025-10-14 Симхат Тора|2026-04-02 Песах|2026-04-08 Песах (7-й день)|2026-04-22 Йом Ацмаут|2026-05-22 Шавуот|2026-09-12 Рош ха-Шана|2026-09-13 Рош ха-Шана|2026-09-21 Йом Кипур|2026-09-26 Суккот|2026-10-03 Симхат Тора|2027-04-22 Песах|2027-04-28 Песах (7-й день)|2027-05-12 Йом Ацмаут|2027-06-11 Шавуот|2027-10-02 Рош ха-Шана|2027-10-03 Рош ха-Шана|2027-10-11 Йом Кипур|2027-10-16 Суккот|2027-10-23 Симхат Тора|2028-04-11 Песах|2028-04-17 Песах (7-й день)|2028-05-02 Йом Ацмаут|2028-05-31 Шавуот|2028-09-21 Рош ха-Шана|2028-09-22 Рош ха-Шана|2028-09-30 Йом Кипур|2028-10-05 Суккот|2028-10-12 Симхат Тора|2029-03-31 Песах|2029-04-06 Песах (7-й день)|2029-04-19 Йом Ацмаут|2029-05-20 Шавуот|2029-09-10 Рош ха-Шана|2029-09-11 Рош ха-Шана|2029-09-19 Йом Кипур|2029-09-24 Суккот|2029-10-01 Симхат Тора|2030-04-18 Песах|2030-04-24 Песах (7-й день)|2030-05-08 Йом Ацмаут|2030-06-07 Шавуот|2030-09-28 Рош ха-Шана|2030-09-29 Рош ха-Шана|2030-10-07 Йом Кипур|2030-10-12 Суккот|2030-10-19 Симхат Тора".split("|").forEach(p => { HOLIDAYS[p.slice(0,10)] = p.slice(11); });
 // Остальные памятные дни — только подпись в календаре, на оплату не влияют (обычные рабочие дни)
 const OBSERVANCES = {};
-"2023-02-06 Ту би-Шват|2023-03-07 Пурим|2023-04-07 Холь ха-Моэд|2023-04-08 Холь ха-Моэд|2023-04-09 Холь ха-Моэд|2023-04-10 Холь ха-Моэд|2023-04-11 Холь ха-Моэд|2023-04-18 Йом ха-Шоа|2023-04-25 Йом ха-Зикарон|2023-05-09 Лаг ба-Омер|2023-07-27 Тиша бе-Ав|2023-10-01 Холь ха-Моэд|2023-10-02 Холь ха-Моэд|2023-10-03 Холь ха-Моэд|2023-10-04 Холь ха-Моэд|2023-10-05 Холь ха-Моэд|2023-10-06 Холь ха-Моэд|2023-12-08 Ханука 1|2023-12-09 Ханука 2|2023-12-10 Ханука 3|2023-12-11 Ханука 4|2023-12-12 Ханука 5|2023-12-13 Ханука 6|2023-12-14 Ханука 7|2023-12-15 Ханука 8|2024-01-25 Ту би-Шват|2024-03-24 Пурим|2024-04-24 Холь ха-Моэд|2024-04-25 Холь ха-Моэд|2024-04-26 Холь ха-Моэд|2024-04-27 Холь ха-Моэд|2024-04-28 Холь ха-Моэд|2024-05-06 Йом ха-Шоа|2024-05-13 Йом ха-Зикарон|2024-05-26 Лаг ба-Омер|2024-08-13 Тиша бе-Ав|2024-10-18 Холь ха-Моэд|2024-10-19 Холь ха-Моэд|2024-10-20 Холь ха-Моэд|2024-10-21 Холь ха-Моэд|2024-10-22 Холь ха-Моэд|2024-10-23 Холь ха-Моэд|2024-12-26 Ханука 1|2024-12-27 Ханука 2|2024-12-28 Ханука 3|2024-12-29 Ханука 4|2024-12-30 Ханука 5|2024-12-31 Ханука 6|2025-01-01 Ханука 7|2025-01-02 Ханука 8|2025-02-13 Ту би-Шват|2025-03-14 Пурим|2025-04-14 Холь ха-Моэд|2025-04-15 Холь ха-Моэд|2025-04-16 Холь ха-Моэд|2025-04-17 Холь ха-Моэд|2025-04-18 Холь ха-Моэд|2025-04-24 Йом ха-Шоа|2025-04-30 Йом ха-Зикарон|2025-05-16 Лаг ба-Омер|2025-08-03 Тиша бе-Ав|2025-10-08 Холь ха-Моэд|2025-10-09 Холь ха-Моэд|2025-10-10 Холь ха-Моэд|2025-10-11 Холь ха-Моэд|2025-10-12 Холь ха-Моэд|2025-10-13 Холь ха-Моэд|2025-12-15 Ханука 1|2025-12-16 Ханука 2|2025-12-17 Ханука 3|2025-12-18 Ханука 4|2025-12-19 Ханука 5|2025-12-20 Ханука 6|2025-12-21 Ханука 7|2025-12-22 Ханука 8|2026-02-02 Ту би-Шват|2026-03-03 Пурим|2026-04-03 Холь ха-Моэд|2026-04-04 Холь ха-Моэд|2026-04-05 Холь ха-Моэд|2026-04-06 Холь ха-Моэд|2026-04-07 Холь ха-Моэд|2026-04-14 Йом ха-Шоа|2026-04-21 Йом ха-Зикарон|2026-05-05 Лаг ба-Омер|2026-07-23 Тиша бе-Ав|2026-09-27 Холь ха-Моэд|2026-09-28 Холь ха-Моэд|2026-09-29 Холь ха-Моэд|2026-09-30 Холь ха-Моэд|2026-10-01 Холь ха-Моэд|2026-10-02 Холь ха-Моэд|2026-12-05 Ханука 1|2026-12-06 Ханука 2|2026-12-07 Ханука 3|2026-12-08 Ханука 4|2026-12-09 Ханука 5|2026-12-10 Ханука 6|2026-12-11 Ханука 7|2026-12-12 Ханука 8|2027-01-23 Ту би-Шват|2027-03-23 Пурим|2027-04-23 Холь ха-Моэд|2027-04-24 Холь ха-Моэд|2027-04-25 Холь ха-Моэд|2027-04-26 Холь ха-Моэд|2027-04-27 Холь ха-Моэд|2027-05-04 Йом ха-Шоа|2027-05-11 Йом ха-Зикарон|2027-05-25 Лаг ба-Омер|2027-08-12 Тиша бе-Ав|2027-10-17 Холь ха-Моэд|2027-10-18 Холь ха-Моэд|2027-10-19 Холь ха-Моэд|2027-10-20 Холь ха-Моэд|2027-10-21 Холь ха-Моэд|2027-10-22 Холь ха-Моэд|2027-12-25 Ханука 1|2027-12-26 Ханука 2|2027-12-27 Ханука 3|2027-12-28 Ханука 4|2027-12-29 Ханука 5|2027-12-30 Ханука 6|2027-12-31 Ханука 7|2028-01-01 Ханука 8|2028-02-12 Ту би-Шват|2028-03-12 Пурим|2028-04-12 Холь ха-Моэд|2028-04-13 Холь ха-Моэд|2028-04-14 Холь ха-Моэд|2028-04-15 Холь ха-Моэд|2028-04-16 Холь ха-Моэд|2028-04-24 Йом ха-Шоа|2028-05-01 Йом ха-Зикарон|2028-05-14 Лаг ба-Омер|2028-08-01 Тиша бе-Ав|2028-10-06 Холь ха-Моэд|2028-10-07 Холь ха-Моэд|2028-10-08 Холь ха-Моэд|2028-10-09 Холь ха-Моэд|2028-10-10 Холь ха-Моэд|2028-10-11 Холь ха-Моэд|2028-12-13 Ханука 1|2028-12-14 Ханука 2|2028-12-15 Ханука 3|2028-12-16 Ханука 4|2028-12-17 Ханука 5|2028-12-18 Ханука 6|2028-12-19 Ханука 7|2028-12-20 Ханука 8|2029-01-31 Ту би-Шват|2029-03-01 Пурим|2029-04-01 Холь ха-Моэд|2029-04-02 Холь ха-Моэд|2029-04-03 Холь ха-Моэд|2029-04-04 Холь ха-Моэд|2029-04-05 Холь ха-Моэд|2029-04-12 Йом ха-Шоа|2029-04-18 Йом ха-Зикарон|2029-05-03 Лаг ба-Омер|2029-07-22 Тиша бе-Ав|2029-09-25 Холь ха-Моэд|2029-09-26 Холь ха-Моэд|2029-09-27 Холь ха-Моэд|2029-09-28 Холь ха-Моэд|2029-09-29 Холь ха-Моэд|2029-09-30 Холь ха-Моэд|2029-12-02 Ханука 1|2029-12-03 Ханука 2|2029-12-04 Ханука 3|2029-12-05 Ханука 4|2029-12-06 Ханука 5|2029-12-07 Ханука 6|2029-12-08 Ханука 7|2029-12-09 Ханука 8|2030-01-19 Ту би-Шват|2030-03-19 Пурим|2030-04-19 Холь ха-Моэд|2030-04-20 Холь ха-Моэд|2030-04-21 Холь ха-Моэд|2030-04-22 Холь ха-Моэд|2030-04-23 Холь ха-Моэд|2030-04-30 Йом ха-Шоа|2030-05-07 Йом ха-Зикарон|2030-05-21 Лаг ба-Омер|2030-08-08 Тиша бе-Ав|2030-10-13 Холь ха-Моэд|2030-10-14 Холь ха-Моэд|2030-10-15 Холь ха-Моэд|2030-10-16 Холь ха-Моэд|2030-10-17 Холь ха-Моэд|2030-10-18 Холь ха-Моэд|2030-12-21 Ханука 1|2030-12-22 Ханука 2|2030-12-23 Ханука 3|2030-12-24 Ханука 4|2030-12-25 Ханука 5|2030-12-26 Ханука 6|2030-12-27 Ханука 7|2030-12-28 Ханука 8".split("|").forEach(p => { OBSERVANCES[p.slice(0,10)] = p.slice(11); });
+"2023-02-06 Ту би-Шват|2023-03-07 Пурим|2023-04-07 Холь ха-Моэд|2023-04-08 Холь ха-Моэд|2023-04-09 Холь ха-Моэд|2023-04-10 Холь ха-Моэд|2023-04-11 Холь ха-Моэд|2023-04-18 Йом ха-Шоа|2023-04-25 Йом ха-Зикарон|2023-05-09 Лаг ба-Омер|2023-07-27 Тиша бе-Ав|2023-10-01 Холь ха-Моэд|2023-10-02 Холь ха-Моэд|2023-10-03 Холь ха-Моэд|2023-10-04 Холь ха-Моэд|2023-10-05 Холь ха-Моэд|2023-10-06 Холь ха-Моэд|2023-12-08 Ханука 1|2023-12-09 Ханука 2|2023-12-10 Ханука 3|2023-12-11 Ханука 4|2023-12-12 Ханука 5|2023-12-13 Ханука 6|2023-12-14 Ханука 7|2023-12-15 Ханука 8|2024-01-25 Ту би-Шват|2024-03-24 Пурим|2024-04-24 Холь ха-Моэд|2024-04-25 Холь ха-Моэд|2024-04-26 Холь ха-Моэд|2024-04-27 Холь ха-Моэд|2024-04-28 Холь ха-Моэд|2024-05-06 Йом ха-Шоа|2024-05-13 Йом ха-Зикарон|2024-05-26 Лаг ба-Омер|2024-08-13 Тиша бе-Ав|2024-10-18 Холь ха-Моэд|2024-10-19 Холь ха-Моэд|2024-10-20 Холь ха-Моэд|2024-10-21 Холь ха-Моэд|2024-10-22 Холь ха-Моэд|2024-10-23 Холь ха-Моэд|2024-12-26 Ханука 1|2024-12-27 Ханука 2|2024-12-28 Ханука 3|2024-12-29 Ханука 4|2024-12-30 Ханука 5|2024-12-31 Ханука 6|2025-01-01 Ханука 7|2025-01-02 Ханука 8|2025-02-13 Ту би-Шват|2025-03-14 Пурим|2025-04-14 Холь ха-Моэд|2025-04-15 Холь ха-Моэд|2025-04-16 Холь ха-Моэд|2025-04-17 Холь ха-Моэд|2025-04-18 Холь ха-Моэд|2025-04-24 Йом ха-Шоа|2025-04-30 Йом ха-Зикарон|2025-05-16 Лаг ба-Омер|2025-08-03 Тиша бе-Ав|2025-10-08 Холь ха-Моэд|2025-10-09 Холь ха-Моэд|2025-10-10 Холь ха-Моэд|2025-10-11 Холь ха-Моэд|2025-10-12 Холь ха-Моэд|2025-10-13 Холь ха-Моэд|2025-12-15 Ханука 1|2025-12-16 Ханука 2|2025-12-17 Ханука 3|2025-12-18 Ханука 4|2025-12-19 Ханука 5|2025-12-20 Ханука 6|2025-12-21 Ханука 7|2025-12-22 Ханука 8|2026-02-02 Ту би-Шват|2026-03-03 Пурим|2026-04-03 Холь ха-Моэд|2026-04-04 Холь ха-Моэд|2026-04-05 Холь ха-Моэд|2026-04-06 Холь ха-Моэд|2026-04-07 Холь ха-Моэд|2026-04-14 Йом ха-Шоа|2026-04-21 Йом ха-Зикарон|2026-05-05 Лаг ба-Омер|2026-07-23 Тиша бе-Ав|2026-09-27 Холь ха-Моэд|2026-09-28 Холь ха-Моэд|2026-09-29 Холь ха-Моэд|2026-09-30 Холь ха-Моэд|2026-10-01 Холь ха-Моэд|2026-10-02 Холь ха-Моэд|2026-12-05 Ханука 1|2026-12-06 Ханука 2|2026-12-07 Ханука 3|2026-12-08 Ханука 4|2026-12-09 Ханука 5|2026-12-10 Ханука 6|2026-12-11 Ханука 7|2026-12-12 Ханука 8|2027-01-23 Ту би-Шват|2027-03-23 Пурим|2027-04-23 Холь ха-Моэд|2027-04-24 Холь ха-Моэд|2027-04-25 Холь ха-Моэд|2027-04-26 Холь ха-Моэд|2027-04-27 Холь ха-Моэд|2027-05-04 Йом ха-Шоа|2027-05-11 Йом ха-Зикарон|2027-05-25 Лаг ба-Омер|2027-08-12 Тиша бе-Ав|2027-10-17 Холь ха-Моэд|2027-10-18 Холь ха-Моэд|2027-10-19 Холь ха-Моэд|2027-10-20 Холь ха-Моэд|2027-10-21 Холь ха-Моэд|2027-10-22 Холь ха-Моэд|2027-12-25 Ханука 1|2027-12-26 Ханука 2|2027-12-27 Ханука 3|2027-12-28 Ханука 4|2027-12-29 Ханука 5|2027-12-30 Ханука 6|2027-12-31 Ханука 7|2028-01-01 Ханука 8|2028-02-12 Ту би-Шват|2028-03-12 Пурим|2028-04-12 Холь ха-Моэд|2028-04-13 Холь ха-Моэд|2028-04-14 Холь ха-Моэд|2028-04-15 Холь ха-Моэд|2028-04-16 Холь ха-Моэд|2028-04-24 Йом ха-Шоа|2028-05-01 Йом ха-Зикарон|2028-05-14 Лаг ба-Омер|2028-08-01 Тиша бе-Ав|2028-10-06 Холь ха-Моэд|2028-10-07 Холь ха-Моэд|2028-10-08 Холь ха-Моэд|2028-10-09 Холь ха-Моэд|2028-10-10 Холь ха-Моэд|2028-10-11 Холь ха-Моэд|2028-12-13 Ханука 1|2028-12-14 Ханука 2|2028-12-15 Ханука 3|2028-12-16 Ханука 4|2028-12-17 Ханука 5|2028-12-18 Ханука 6|2028-12-19 Ханука 7|2028-12-20 Ханука 8|2029-01-31 Ту би-Шват|2029-03-01 Пурим|2029-04-01 Холь ха-Моэд|2029-04-02 Холь ха-Моэд|2029-04-03 Холь ха-Моэд|2029-04-04 Холь ха-Моэд|2029-04-05 Холь ха-Моэд|2029-04-12 Йом ха-Шоа|2029-04-18 Йом ха-Зикарон|2029-05-03 Лаг ба-Омер|2029-07-22 Тиша бе-Ав|2029-09-25 Холь ха-Моэд|2029-09-26 Холь ха-Моэд|2029-09-27 Холь ха-Моэд|2029-09-28 Холь ха-Моэд|2029-09-29 Холь ха-Моэд|2029-09-30 Холь ха-Моэд|2029-12-02 Ханука 1|2029-12-03 Ханука 2|2029-12-04 Ханука 3|2029-12-05 Ханука 4|2029-12-06 Ханука 5|2029-12-07 Ханука 6|2029-12-08 Ханука 7|2029-12-09 Ханука 8|2030-01-19 Ту би-Шват|2030-03-19 Пурим|2030-04-19 Холь ха-Моэд|2030-04-20 Холь ха-Моэд|2030-04-21 Холь ха-Моэд|2030-04-22 Холь ха-Моэд|2030-04-23 Холь ха-Моэд|2030-04-30 Йом ха-Шоа|2030-05-07 Йом ха-Зикарон|2030-05-21 Лаг ба-Омер|2030-08-08 Тиша бе-Ав|2030-10-13 Холь ха-Моэд|2030-10-14 Холь ха-Моэд|2030-10-15 Холь ха-Моэд|2030-10-16 Холь ха-Моэд|2030-10-17 Холь ха-Моэд|2030-10-18 Холь ха-Моэд|2030-12-21 Ханука 1|2030-12-22 Ханука 2|2030-12-23 Ханука 3|2030-12-24 Ханука 4|2030-12-25 Ханука 5|2030-12-26 Ханука 6|2030-12-27 Ханука 7|2030-12-28 Ханука 8|2024-02-27 Выборы (мун.)|2026-10-27 Выборы в Кнессет".split("|").forEach(p => { OBSERVANCES[p.slice(0,10)] = p.slice(11); });
 function dkey(y,m,d){ const t = new Date(y,m,d); return t.getFullYear() + "-" + String(t.getMonth()+1).padStart(2,"0") + "-" + String(t.getDate()).padStart(2,"0"); }
 // Праздник ли день: ручная отметка в окне дня важнее встроенного списка
 function holidayName(y,m,d){
@@ -399,6 +399,7 @@ function saveData() {
       hourlyRate: state.hourlyRate, creditPoints: state.creditPoints,
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot, zkifotM: state.zkifotM,
+      ratesM: state.ratesM, hbM: state.hbM, recupM: state.recupM, taxM: state.taxM, netM: state.netM,
       notes: state.notes, noteTags: state.noteTags,
       holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, alarms: state.alarms, alarmsOn: state.alarmsOn, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
@@ -430,6 +431,7 @@ const state = {
   extras: saved.extras || {},
   zkifot: saved.zkifot !== undefined ? saved.zkifot : 0,
   zkifotM: saved.zkifotM || {},
+  ratesM: saved.ratesM || {}, hbM: saved.hbM || {}, recupM: saved.recupM || {}, taxM: saved.taxM || {}, netM: saved.netM || {},
   torPct: saved.torPct !== undefined ? saved.torPct : 58.8,
   torAuto: saved.torAuto !== undefined ? saved.torAuto : true,
   // Cycle schedule template: array of {count, type, isOff}
@@ -455,7 +457,7 @@ const state = {
   alarms: saved.alarms || {}, alarmsOn: saved.alarmsOn !== undefined ? saved.alarmsOn : true,
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
-  hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1100,
+  hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1000,
   showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showForecast: false,
   selected: new Set(),
   bulkDropOpen: false,
@@ -473,6 +475,9 @@ const toNum = (v) => Number(String(v).replace(",", ".")) || 0;
 function ymKey() { return state.year + "-" + String(state.month+1).padStart(2,"0"); }
 // Премия и разовые выплаты — свои для каждого месяца
 function getPremium() { const v = state.premiums[ymKey()]; return v !== undefined ? (Number(v)||0) : (Number(state.premium)||0); }
+// Данные из листка по месяцам (ставка, бонус 167, хавраа 160, налог, нетто для сверки)
+const mget = (f) => { const o = state[f]; const v = o ? o[ymKey()] : undefined; return (v === undefined || v === null || v === "") ? undefined : Number(v); };
+function curRate() { const r = mget("ratesM"); return r !== undefined ? r : state.hourlyRate; }
 function getExtras() { return Number(state.extras[ymKey()]) || 0; }
 function getShift(d) { return state.shifts[key(d)] || { type: "off" }; }
 function setShiftDay(d, type) { state.shifts[key(d)] = { type: type }; saveData(); }
@@ -486,7 +491,7 @@ function computeStats() {
     const sh = getShift(d);
     if (sh.type === "off") continue;
     const sab = isSabbath(state.year, state.month, d);
-    const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
+    const r = calcShift(sh.type, shabKind(state.year, state.month, d), curRate());
     const h = (SHIFT_TYPES[sh.type] && SHIFT_TYPES[sh.type].hours) || 0;
     totalGross += r.total; regularPay += r.regular || 0;
     if (sh.type === "vac") continue;      // отпуск: деньги есть, часов и смены нет
@@ -508,25 +513,28 @@ function calcHoursBonus(h) {
 function computeNet(stats) {
   const shiftsGross = stats.totalGross;
   const premium = getPremium(), extras = getExtras();
-  const hoursBonus = calcHoursBonus(stats.totalHours || 0);
-  const gross = shiftsGross + premium + extras + hoursBonus;
+  const hbm = mget("hbM");
+  const hoursBonus = hbm !== undefined ? hbm : calcHoursBonus(stats.totalHours || 0);
+  const recup = mget("recupM") || 0;          // דמי הבראה (код 160): в пенсию идёт, в керен нет
+  const gross = shiftsGross + premium + extras + hoursBonus + recup;
   const zm = state.zkifotM && state.zkifotM[ymKey()];
   const zkifot = zm !== undefined ? (Number(zm) || 0) : (Number(state.zkifot) || 0);      // условные начисления: облагаются, но не выплачиваются
   const taxBase = gross + zkifot;
   // По листку: пенсия — с обычной оплаты смен (без переработки и надбавок) + премия; керен — только с обычной оплаты
   const regular = stats.regularPay !== undefined ? stats.regularPay : shiftsGross;
-  const pension = state.includePension ? (regular + premium) * (Number(state.pensionPct)||0) / 100 : 0;
+  const pension = state.includePension ? (regular + premium + recup) * (Number(state.pensionPct)||0) / 100 : 0;
   const kehesh  = state.includePension ? regular * (Number(state.keheshPct)||0) / 100 : 0;
   const bituach = calcBituachLeumi(taxBase);
   const pensionCredit = (state.includePension && state.pensionCreditOn) ? pension * PENSION_CREDIT_RATE : 0;
   const ceilMonth = (Number(state.benefitCeilYear)||0) / 12;
-  const incomeTax = calcIncomeTax(taxBase, state.creditPoints, state.nofHagalil, Number(state.benefitPct)||0, ceilMonth, pensionCredit);
+  const taxOv = mget("taxM");
+  const incomeTax = taxOv !== undefined ? taxOv : calcIncomeTax(taxBase, state.creditPoints, state.nofHagalil, Number(state.benefitPct)||0, ceilMonth, pensionCredit);
   const totalDeductions = incomeTax + bituach + pension + kehesh;
-  const net = Math.max(0, gross - totalDeductions);
+  const net = gross - totalDeductions;
   const rawTax = bracketTax(taxBase, BRACKETS_MONTH);
   const pointsShield = (Number(state.creditPoints)||0) * POINT_VALUE_2026;
   const nofShield = state.nofHagalil ? Math.min(taxBase, ceilMonth) * (Number(state.benefitPct)||0) / 100 : 0;
-  return { shiftsGross, premium, extras, hoursBonus, taxBase, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, pensionCredit, totalDeductions, net };
+  return { shiftsGross, premium, extras, hoursBonus, recup, taxOverride: taxOv !== undefined, taxBase, gross, pension, kehesh, bituach, incomeTax, rawTax, pointsShield, nofShield, pensionCredit, totalDeductions, net };
 }
 
 // Годовой прогноз налога по всем введённым месяцам года (годовые ступени)
@@ -779,7 +787,7 @@ function render() {
   headerTop.appendChild(el("button", { class:"nav-btn", text:"‹", onclick: () => changeMonth(-1) }));
   const titleBox = el("div", { class:"month-title" });
   titleBox.appendChild(el("div", { class:"name", text: MONTHS_RU[state.month] + " " + state.year }));
-  titleBox.appendChild(el("div", { class:"rate", text: "Ставка: " + state.hourlyRate + " ₪/ч" }));
+  titleBox.appendChild(el("div", { class:"rate", text: "Ставка: " + curRate() + " ₪/ч" }));
   headerTop.appendChild(titleBox);
   headerTop.appendChild(el("button", { class:"nav-btn", text:"›", onclick: () => changeMonth(1) }));
   header.appendChild(headerTop);
@@ -875,7 +883,7 @@ function render() {
       if (sh.type !== "off") {
         const short = def.label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim();
         cell.appendChild(el("div", { class:"sl", text: (isTor ? "⚡" : "") + short }));
-        const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
+        const r = calcShift(sh.type, shabKind(state.year, state.month, d), curRate());
         cell.appendChild(el("div", { class:"am", text: Math.round(r.total).toLocaleString() + " ₪" }));
       } else {
         cell.appendChild(el("div", { class:"sl", text:"вых." }));
@@ -928,7 +936,7 @@ function render() {
       for (let d = d0; d <= d1; d++) {
         const sh = getShift(d);
         if (sh.type === "off") continue;
-        const r = calcShift(sh.type, shabKind(state.year, state.month, d), state.hourlyRate);
+        const r = calcShift(sh.type, shabKind(state.year, state.month, d), curRate());
         days.push({ d, sh, r }); wg += r.total; wh += (SHIFT_TYPES[sh.type].hours || 0);
       }
       const wk = isoWeek(new Date(state.year, state.month, d0));
@@ -999,17 +1007,16 @@ function render() {
       const hint = h > 220 ? "" : (h >= 200 ? " · до " + state.hb2 + " ₪: ещё " + (221 - h) + " ч" : (h > 0 ? " · до " + state.hb1 + " ₪: ещё " + (200 - h) + " ч" : ""));
       netCard.appendChild(netRow("Бонус за часы (" + h + " ч)" + hint, hb.toLocaleString() + " ₪", hb ? "#34d399" : "#64748b"));
     }
+    if (netCalc.recup) netCard.appendChild(netRow("Дмей хавраа (код 160)", Math.round(netCalc.recup).toLocaleString() + " ₪", "#e2e8f0"));
     const grossTotalRow = el("div", { class:"net-row", style:"padding-top:6px;border-top:1px dashed #134e3a" });
     grossTotalRow.appendChild(el("span", { text:"Брутто всего", style:"color:#cbd5e1;font-weight:600" }));
     grossTotalRow.appendChild(el("span", { id:"net-gross", text: Math.round(netCalc.gross).toLocaleString() + " ₪", style:"color:#e2e8f0;font-weight:700" }));
     netCard.appendChild(grossTotalRow);
-    const incomeTaxLabel = netCalc.incomeTax === 0
-      ? "Подоходный налог (льготы покрывают ✓)"
-      : "Подоходный налог (Мас Ахнаса)";
-    const incomeTaxColor = netCalc.incomeTax === 0 ? "#34d399" : "#fb7185";
-    const incomeTaxVal = netCalc.incomeTax === 0
-      ? "0 ₪"
-      : "-" + Math.round(netCalc.incomeTax).toLocaleString() + " ₪";
+    const incomeTaxLabel = netCalc.taxOverride ? (netCalc.incomeTax < 0 ? "Подоходный налог — возврат (по листку)" : "Подоходный налог (по листку)")
+      : (netCalc.incomeTax === 0 ? "Подоходный налог (льготы покрывают ✓)" : "Подоходный налог (Мас Ахнаса)");
+    const incomeTaxColor = netCalc.incomeTax <= 0 ? "#34d399" : "#fb7185";
+    const incomeTaxVal = netCalc.incomeTax === 0 ? "0 ₪"
+      : (netCalc.incomeTax < 0 ? "+" + Math.round(-netCalc.incomeTax).toLocaleString() + " ₪" : "-" + Math.round(netCalc.incomeTax).toLocaleString() + " ₪");
     netCard.appendChild(netRow(incomeTaxLabel, incomeTaxVal, incomeTaxColor, false, "net-tax"));
     netCard.appendChild(netRow("Битуах Леуми + Мас Бриут", "-" + Math.round(netCalc.bituach).toLocaleString() + " ₪", "#fb7185", false, "net-bituach"));
     if (state.includePension) {
@@ -1024,6 +1031,7 @@ function render() {
     wrap.appendChild(netCard);
 
     if (IN_APP) wrap.appendChild(renderAppAlarmCard());
+    wrap.appendChild(renderPayslipCard(netCalc));
     wrap.appendChild(renderTimesheetCard());
     wrap.appendChild(renderForecast());
     wrap.appendChild(renderYearStats());
@@ -1059,7 +1067,7 @@ function render() {
     ht.appendChild(el("span", { class:"toggle-pill" + (state.holidaysOn ? " on" : ""), text: state.holidaysOn ? "ВКЛ" : "ВЫКЛ" }));
     ht.addEventListener("click", () => { state.holidaysOn = !state.holidaysOn; saveData(); render(); });
     extra.appendChild(ht);
-    extra.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Встроены праздники 2023–2030 и дни выборов. С 17:00 кануна до 17:00 праздника — как шабат. Любой день можно отметить или снять в окне дня." }));
+    extra.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Встроены праздники 2023–2030. С 17:00 кануна до 17:00 праздника — как шабат. Любой день можно отметить или снять в окне дня." }));
     const wz = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center", text:"🧭 Пройти мастер настройки заново" });
     wz.addEventListener("click", () => { state.showWizard = true; state.wizStep = 0; render(); });
     extra.appendChild(wz);
@@ -1267,7 +1275,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 25" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 26" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1383,7 +1391,7 @@ function planExtra(goal) {
     for (let d = fromDay; d <= dim; d++) {
       const k = dkey(y, m, d), t = (plan[k] && plan[k].type) || "off";
       const kind = shabKind(y, m, d);
-      const curPay = calcShift(t, kind, state.hourlyRate).total;
+      const curPay = calcShift(t, kind, curRate()).total;
       let opts = [];
       if (t === "off") {
         if (runIfWork(plan, y, m, d) > 7) continue;
@@ -1393,7 +1401,7 @@ function planExtra(goal) {
       }
       opts.forEach(o => {
         if (hrsNow + o.hrs > cap) return;   // не больше лимита часов в месяц
-        const gain = calcShift(o.nt, kind, state.hourlyRate).total - curPay;
+        const gain = calcShift(o.nt, kind, curRate()).total - curPay;
         const score = gain / o.hrs;
         if (gain > 0 && (!best || score > best.score)) best = { d, k, from: t, to: o.nt, hrs: o.hrs, what: o.what, gross: gain, score };
       });
@@ -1698,6 +1706,31 @@ function renderAppAlarmCard() {
   card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:6px", text:"На Xiaomi включи: Автозапуск; Экран блокировки; Всплывающие окна в фоне; Контроль активности → Нет ограничений." }));
   return card;
 }
+function renderPayslipCard(netCalc) {
+  const card = el("div", { class:"settings-card" });
+  const open = !!state.showPayslip;
+  const head = el("div", { class:"title", style:"cursor:pointer;display:flex;justify-content:space-between;margin-bottom:0" });
+  head.appendChild(el("span", { text:"📑 Из листка за " + MONTHS_RU[state.month].toLowerCase() }));
+  const pn = mget("netM");
+  head.appendChild(el("span", { text: (pn !== undefined ? (Math.abs(netCalc.net - pn) < 50 ? "✅ " : "⚠️ ") : "") + (open ? "▴" : "▾") }));
+  head.addEventListener("click", () => { state.showPayslip = !open; render(); });
+  card.appendChild(head);
+  if (pn !== undefined) card.appendChild(el("div", { style:"font-size:12px;margin-top:6px;color:" + (Math.abs(netCalc.net - pn) < 50 ? "#34d399" : "#fbbf24"),
+    text:"Сверка: приложение " + Math.round(netCalc.net).toLocaleString() + " ₪ · листок " + Math.round(pn).toLocaleString() + " ₪ · разница " + Math.round(netCalc.net - pn).toLocaleString() + " ₪" }));
+  if (!open) return card;
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:8px 0", text:"Только для этого месяца. Пустое поле — считается по общим правилам." }));
+  [["Ставка, ₪/ч (שכר שעה)", "ratesM"], ["Бонус за часы, код 167", "hbM"], ["Дмей хавраа, код 160", "recupM"], ["Зкифот (סה״כ זקיפות)", "zkifotM"],
+   ["Подоходный налог по листку (מס הכנסה)", "taxM"], ["Нетто по листку — для сверки", "netM"]].forEach(([lab, f]) => {
+    card.appendChild(el("div", { class:"field-label", style:"margin-top:8px", text: lab }));
+    const v = mget(f);
+    const i = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: v === undefined ? "" : String(v), placeholder:"—" });
+    caretToEnd(i);
+    i.addEventListener("input", e => { state[f] = state[f] || {}; const t = String(e.target.value).trim(); if (t === "") delete state[f][ymKey()]; else state[f][ymKey()] = toNum(t); saveData(); updateNetDisplay(); });
+    i.addEventListener("change", () => render());
+    card.appendChild(i);
+  });
+  return card;
+}
 function renderGoal(stats, net) {
   const g = Number(state.goalNet) || 0;
   const pct = Math.min(100, Math.round(net.net / g * 100));
@@ -1837,7 +1870,7 @@ function renderDaySheet() {
   const holNow = holidayName(state.year, state.month, d);
   m.appendChild(el("div", { class:"modal-title", text: wd + ", " + d + " " + mGen + (dt.getDay()===6 ? " ✡️" : "") + (holNow ? " · " + holNow : (OBSERVANCES[hk] ? " · " + OBSERVANCES[hk] : "")) }));
   const t = state.sheetType || "off";
-  const r = calcShift(t, shabKind(state.year, state.month, d), state.hourlyRate);
+  const r = calcShift(t, shabKind(state.year, state.month, d), curRate());
   const sub = el("div", { class:"modal-sub", style:"cursor:pointer" , text: (t==="off" ? "Выходной" : SHIFT_TYPES[t].label.replace(/🌅|☀️|🌙|🔴/g,"").trim() + " · " + Math.round(r.total).toLocaleString() + " ₪" + (r.breakdown.length ? (state.showBreakdown ? "  ▲" : "  ▼ детали") : "")) });
   sub.addEventListener("click", () => { state.showBreakdown = !state.showBreakdown; render(); });
   m.appendChild(sub);
