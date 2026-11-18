@@ -1021,6 +1021,7 @@ function render() {
 
     wrap.appendChild(netCard);
 
+    wrap.appendChild(renderTimesheetCard());
     wrap.appendChild(renderForecast());
     wrap.appendChild(renderYearStats());
 
@@ -1257,7 +1258,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 22" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 23" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1534,6 +1535,88 @@ function renderForecast() {
   t.appendChild(tot);
   card.appendChild(t);
   card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:8px", text:"Нажми на месяц — откроется календарь, там кнопка 🧠 покажет конкретные дни." }));
+  return card;
+}
+// ── Загрузка табеля (PDF «rper6») → смены месяца ──
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return new Promise((ok, fail) => {
+    const sc = document.createElement("script"); sc.src = PDFJS + "pdf.min.js";
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; ok(window.pdfjsLib); };
+    sc.onerror = () => fail(new Error("Нет интернета — не удалось загрузить читалку PDF"));
+    document.head.appendChild(sc);
+  });
+}
+async function pdfLines(buf) {
+  const lib = await loadPdfJs();
+  const doc = await lib.getDocument({ data: buf }).promise;
+  const lines = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const rows = {};
+    tc.items.forEach(it => { const y = Math.round(it.transform[5]); (rows[y] = rows[y] || []).push([it.transform[4], it.str]); });
+    Object.keys(rows).sort((a, b) => b - a).forEach(y => lines.push(rows[y].sort((a, b) => a[0] - b[0]).map(x => x[1]).join(" | ")));
+  }
+  return lines;
+}
+// Тип смены по времени входа и числу часов (сверено с табелями май–октябрь 2026)
+function parseTimesheet(lines) {
+  const res = { shifts: {}, months: {}, unknown: [] };
+  lines.forEach(line => {
+    const m = line.match(/(\d\d)\/(\d\d)\/(20\d\d)/); if (!m) return;
+    if (/תאריך הפקה/.test(line)) return;
+    const d = +m[1], mo = +m[2] - 1, y = +m[3];
+    const k = dkey(y, mo, d), ym = k.slice(0, 7);
+    res.months[ym] = res.months[ym] || { n: 0, tor: 0, vac: 0 };
+    const dec = (line.match(/(?:^|[^\d\/.])(\d{1,2}\.\d\d)(?![\d\/])/g) || []).map(x => parseFloat(x.replace(/^[^\d]+/, "")));
+    const offDay = /חופשת/.test(line);
+    const vacation = !offDay && /חופש/.test(line);
+    if (dec.length < 3) {
+      if (vacation) { res.shifts[k] = { type: "vac" }; res.months[ym].vac++; }
+      else if (!offDay && /[א-ת]{2,}/.test(line.replace(/[א-ת]'|ש(?=\s|\||$)/g, ""))) res.unknown.push(d + "." + (mo + 1));
+      return;
+    }
+    const entry = dec[dec.length - 1], h = dec[dec.length - 3];
+    const e = Math.floor(entry) + (entry - Math.floor(entry)) * 100 / 60;
+    let t;
+    if (e >= 4.5 && e < 7) t = h >= 11 ? "morning12" : "morning";
+    else if (e >= 8.5 && e < 11.5) t = "day12";
+    else if (e >= 11.5 && e < 16) t = h >= 11 ? "day12" : "day";
+    else if (e >= 16 && e < 20) t = "night12";
+    else if (e >= 20 && e < 23.5) t = h >= 11 ? "night12" : "night8";
+    else { res.unknown.push(d + "." + (mo + 1)); return; }
+    if (offDay) { t = "tor_" + t; res.months[ym].tor++; }
+    res.shifts[k] = { type: t }; res.months[ym].n++;
+  });
+  return res;
+}
+function importTimesheetFile(file) {
+  const rd = new FileReader();
+  rd.onload = async () => {
+    try {
+      const r = parseTimesheet(await pdfLines(new Uint8Array(rd.result)));
+      const yms = Object.keys(r.months).filter(ym => r.months[ym].n + r.months[ym].vac > 0);
+      if (!yms.length) { alert("В файле не нашёл смен. Это точно табель часов (rper6)?"); return; }
+      const msg = yms.map(ym => { const x = r.months[ym]; return MONTHS_RU[+ym.slice(5) - 1] + " " + ym.slice(0, 4) + ": смен " + x.n + (x.tor ? " (торанут " + x.tor + ")" : "") + (x.vac ? ", отпуск " + x.vac + " дн." : ""); }).join("\n");
+      if (!confirm("Нашёл в табеле:\n" + msg + (r.unknown.length ? "\nНе распознал дни: " + r.unknown.join(", ") : "") + "\n\nЗаменить смены этих месяцев? Премии, заметки и настройки не изменятся.")) return;
+      yms.forEach(ym => { Object.keys(state.shifts).forEach(k => { if (k.indexOf(ym) === 0) delete state.shifts[k]; }); });
+      Object.keys(r.shifts).forEach(k => { if (yms.indexOf(k.slice(0, 7)) >= 0) state.shifts[k] = r.shifts[k]; });
+      const f = yms[0]; state.year = +f.slice(0, 4); state.month = +f.slice(5) - 1; state.view = "calendar";
+      saveData(); render();
+    } catch (e) { alert("Не удалось прочитать PDF: " + e.message); }
+  };
+  rd.readAsArrayBuffer(file);
+}
+function renderTimesheetCard() {
+  const card = el("div", { class:"settings-card" });
+  card.appendChild(el("div", { class:"title", text:"📄 Заполнить месяц из табеля" }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:8px", text:"Выбери PDF табеля часов (rper6…). Смены, торануты (работа в выходной по графику) и дни отпуска проставятся сами. Премию и бонусы впиши из листка." }));
+  const inp = el("input", { type:"file", accept:"application/pdf,.pdf", style:"display:none" });
+  inp.addEventListener("change", () => { const f = inp.files && inp.files[0]; if (f) importTimesheetFile(f); inp.value = ""; });
+  const b = el("button", { class:"toggle-btn", style:"justify-content:center", text:"📄 Выбрать табель PDF" });
+  b.addEventListener("click", () => inp.click());
+  card.appendChild(inp); card.appendChild(b);
   return card;
 }
 function renderGoal(stats, net) {
