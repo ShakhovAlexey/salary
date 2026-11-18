@@ -399,7 +399,7 @@ function saveData() {
       includePension: state.includePension, premium: state.premium,
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot, zkifotM: state.zkifotM,
       notes: state.notes, noteTags: state.noteTags,
-      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
+      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, alarms: state.alarms, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -451,6 +451,7 @@ const state = {
   holidaysOn: saved.holidaysOn !== undefined ? saved.holidaysOn : true,
   holidayOverrides: saved.holidayOverrides || {},
   goalNet: saved.goalNet || 0,
+  alarms: saved.alarms || {},
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
   hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1100,
@@ -837,6 +838,7 @@ function render() {
       .forEach((p, i) => { const d = el("div", { class: i===3 ? "nn" : "" }); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { text: String(p[1]) })); ms.appendChild(d); });
     app.appendChild(ms);
     if (state.goalNet > 0) app.appendChild(renderGoal(stats, netCalc));
+    const ab = alarmButton(); if (ab) app.appendChild(ab);
     const pb = el("button", { class:"toggle-btn", style:"margin:4px 6px 2px;width:calc(100% - 12px);justify-content:center;background:#4c1d95", text:"🧠 Подобрать доп. часы до цели" });
     pb.addEventListener("click", () => { state.showPlanner = true; state.plannerResult = state.goalNet > 0 ? planExtra(state.goalNet) : null; render(); });
     app.appendChild(pb);
@@ -1060,6 +1062,7 @@ function render() {
     wz.addEventListener("click", () => { state.showWizard = true; state.wizStep = 0; render(); });
     extra.appendChild(wz);
     wrap.appendChild(extra);
+    wrap.appendChild(renderAlarmCard());
 
     // Annual projection card
     const yr = computeYear();
@@ -1257,7 +1260,7 @@ function render() {
     pasteGo.addEventListener("click", () => importText(pasteTa.value));
     pasteBox.appendChild(pasteTa); pasteBox.appendChild(pasteGo);
     backup.appendChild(pasteBtn); backup.appendChild(pasteBox);
-    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 20" }));
+    backup.appendChild(el("div", { style:"font-size:10px;color:#334155;margin-top:10px;text-align:right", text:"версия приложения: 21" }));
     wrap.appendChild(backup);
 
     const resetBtn = el("button", { class:"reset-btn", text:"🗑️ Сбросить все данные", onclick: () => {
@@ -1534,6 +1537,95 @@ function renderForecast() {
   t.appendChild(tot);
   card.appendChild(t);
   card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:8px", text:"Нажми на месяц — откроется календарь, там кнопка 🧠 покажет конкретные дни." }));
+  return card;
+}
+// ── Будильник по сменам ──
+const ALARM_DEFAULT = { morning:"04:45", day12:"08:00", day:"12:30", night8:"20:00", night12:"16:00" };
+function alarmKind(t) { const b = baseType(t); return b === "morning12" ? "morning" : b; }
+function alarmTimeFor(t) { const k = alarmKind(t); return (state.alarms && state.alarms[k]) || ALARM_DEFAULT[k] || "05:00"; }
+const ALARM_NAMES = { morning:"Утро", day12:"День 12ч", day:"День", night8:"Ночь 8ч", night12:"Ночь 12ч" };
+// Ближайшая смена, будильник которой ещё впереди
+function nextAlarm() {
+  const now = new Date();
+  for (let i = 0; i < 14; i++) {
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    const s0 = state.shifts[dkey(dt.getFullYear(), dt.getMonth(), dt.getDate())];
+    if (!s0 || !s0.type || s0.type === "off" || s0.type === "vac") continue;
+    const [hh, mm] = alarmTimeFor(s0.type).split(":").map(Number);
+    const at = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), hh, mm);
+    if (at > now) return { at, type: s0.type, date: dt };
+  }
+  return null;
+}
+// Открыть будильник телефона (Android-интент SET_ALARM). Будильник ставится на ближайшее такое время — поэтому только на 24 ч вперёд.
+function setPhoneAlarm(a) {
+  const lab = SHIFT_TYPES[a.type].label.replace(/🌅|☀️|🌙|🔴|⚡/g,"").replace("Тор.","").trim();
+  const msg = "Смена: " + lab + " " + a.date.getDate() + "." + (a.date.getMonth()+1);
+  location.href = "intent:#Intent;action=android.intent.action.SET_ALARM;i.android.intent.extra.alarm.HOUR=" + a.at.getHours() +
+    ";i.android.intent.extra.alarm.MINUTES=" + a.at.getMinutes() + ";S.android.intent.extra.alarm.MESSAGE=" + encodeURIComponent(msg) +
+    ";B.android.intent.extra.alarm.SKIP_UI=false;end";
+}
+function alarmButton() {
+  const a = nextAlarm();
+  const dn = ["вс","пн","вт","ср","чт","пт","сб"];
+  if (!a) return null;
+  const hrs = (a.at - new Date()) / 3600000;
+  const hm = String(a.at.getHours()).padStart(2,"0") + ":" + String(a.at.getMinutes()).padStart(2,"0");
+  const b = el("button", { class:"toggle-btn", style:"margin:4px 6px 2px;width:calc(100% - 12px);justify-content:center;background:#0f172a;border:1px solid #334155",
+    text: "⏰ Будильник на смену " + dn[a.date.getDay()] + " " + a.date.getDate() + " — " + hm + (hrs > 24 ? " (можно поставить за сутки)" : "") });
+  b.addEventListener("click", () => {
+    if (hrs > 24) { alert("Будильник телефона ставится на ближайшее такое время, поэтому поставить его можно не раньше чем за сутки до звонка. Или выгрузи все смены месяца в календарь — в «Итогах», карточка «⏰ Будильник»."); return; }
+    setPhoneAlarm(a);
+  });
+  return b;
+}
+function icsForMonth() {
+  const y = state.year, m = state.month, dim = getDaysInMonth(y, m);
+  const p2 = (n) => String(n).padStart(2, "0");
+  const fmt = (dt) => dt.getFullYear() + p2(dt.getMonth()+1) + p2(dt.getDate()) + "T" + p2(dt.getHours()) + p2(dt.getMinutes()) + "00";
+  const L = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//salary-calc//RU","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
+  let n = 0;
+  for (let d = 1; d <= dim; d++) {
+    const s0 = state.shifts[dkey(y, m, d)];
+    if (!s0 || !s0.type || s0.type === "off" || s0.type === "vac") continue;
+    const spec = SHIFT_SPEC[baseType(s0.type)]; if (!spec) continue;
+    const st = new Date(y, m, d, Math.floor(spec.start), Math.round((spec.start % 1) * 60));
+    const en = new Date(st.getTime() + spec.hours * 3600000);
+    const [hh, mm] = alarmTimeFor(s0.type).split(":").map(Number);
+    let al = new Date(y, m, d, hh, mm); if (al > st) al = new Date(al.getTime() - 86400000);
+    const before = Math.max(0, Math.round((st - al) / 60000));
+    const lab = SHIFT_TYPES[s0.type].label.replace(/🌅|☀️|🌙|🔴/g,"").trim();
+    L.push("BEGIN:VEVENT","UID:shift-" + y + p2(m+1) + p2(d) + "@salary","DTSTAMP:" + fmt(new Date()),"DTSTART:" + fmt(st),"DTEND:" + fmt(en),
+      "SUMMARY:Смена: " + lab, "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:Подъём на смену","TRIGGER:-PT" + before + "M","END:VALARM","END:VEVENT");
+    n++;
+  }
+  L.push("END:VCALENDAR");
+  return { text: L.join("\r\n"), n };
+}
+function renderAlarmCard() {
+  const card = el("div", { class:"settings-card" });
+  card.appendChild(el("div", { class:"title", text:"⏰ Будильник по сменам" }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:8px", text:"Во сколько вставать на каждую смену. Кнопка в календаре ставит будильник телефона на ближайшую смену." }));
+  const grid = el("div", { style:"display:grid;grid-template-columns:1fr 1fr;gap:8px" });
+  Object.keys(ALARM_DEFAULT).forEach(k => {
+    const box = el("div");
+    box.appendChild(el("div", { class:"field-label", text: ALARM_NAMES[k] }));
+    const i = el("input", { type:"time", class:"num-input", value: (state.alarms && state.alarms[k]) || ALARM_DEFAULT[k] });
+    i.addEventListener("change", e => { state.alarms = state.alarms || {}; state.alarms[k] = e.target.value; saveData(); });
+    box.appendChild(i); grid.appendChild(box);
+  });
+  card.appendChild(grid);
+  const ex = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center", text:"📅 Все смены месяца — в календарь телефона" });
+  ex.addEventListener("click", () => {
+    const r = icsForMonth();
+    if (!r.n) { alert("В этом месяце нет смен."); return; }
+    const name = "smeny-" + state.year + "-" + String(state.month+1).padStart(2,"0") + ".ics";
+    const f = new File([r.text], name, { type:"text/calendar" });
+    if (navigator.canShare && navigator.canShare({ files:[f] })) { navigator.share({ files:[f], title:"Смены" }).catch(() => {}); return; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  });
+  card.appendChild(ex);
+  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Создаётся файл с событиями-сменами и напоминанием во время подъёма. Открой его календарём телефона и нажми «Импорт»." }));
   return card;
 }
 function renderGoal(stats, net) {
