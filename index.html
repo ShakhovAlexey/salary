@@ -277,6 +277,14 @@
   .picker-m .dot { width:6px; height:6px; border-radius:3px; background:transparent; }
   .picker-m .dot.on { background:var(--ok); }
   .picker-m.sel .dot.on { background:#fff; }
+
+  .eye-btn { padding:0 12px; display:flex; align-items:center; }
+  .eye-btn svg { width:20px; height:20px; }
+  /* режим «скрыть суммы»: деньги размыты в шапке, календаре и в «Зарплате» */
+  body.hide-money .month-title .sub, body.hide-money .cell2 .am, body.hide-money .money,
+  body.hide-money .net-card .value, body.hide-money .net-card .net-row span:last-child, body.hide-money .net-card .hint,
+  body.hide-money .settings-card .net-row span:last-child, body.hide-money .premium-input, body.hide-money .dy-g, body.hide-money .wk-g,
+  body.hide-money .modal-sub { filter:blur(7px); user-select:none; }
 </style>
 </head>
 <body>
@@ -493,7 +501,7 @@ function saveData() {
       premiums: state.premiums, extras: state.extras, zkifot: state.zkifot, zkifotM: state.zkifotM,
       ratesM: state.ratesM, hbM: state.hbM, refM: state.refM, recupM: state.recupM, taxM: state.taxM, netM: state.netM,
       notes: state.notes, noteTags: state.noteTags,
-      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, alarms: state.alarms, alarmsOn: state.alarmsOn, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
+      holidaysOn: state.holidaysOn, holidayOverrides: state.holidayOverrides, goalNet: state.goalNet, hideMoney: state.hideMoney, alarms: state.alarms, alarmsOn: state.alarmsOn, maxHours: state.maxHours, hoursBonusOn: state.hoursBonusOn, hb1: state.hb1, hb2: state.hb2,
       nofHagalil: state.nofHagalil, benefitPct: state.benefitPct, benefitCeilYear: state.benefitCeilYear,
       pensionPct: state.pensionPct, keheshPct: state.keheshPct, pensionCreditOn: state.pensionCreditOn,
       torPct: state.torPct, torAuto: state.torAuto,
@@ -546,6 +554,7 @@ const state = {
   holidaysOn: saved.holidaysOn !== undefined ? saved.holidaysOn : true,
   holidayOverrides: saved.holidayOverrides || {},
   goalNet: saved.goalNet || 0,
+  hideMoney: !!saved.hideMoney,
   alarms: saved.alarms || {}, alarmsOn: saved.alarmsOn !== undefined ? saved.alarmsOn : true,
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
@@ -1134,12 +1143,15 @@ const ICONS = {
   trend: svg('<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>'),
   compass: svg('<circle cx="12" cy="12" r="8.5"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>'),
   trash: svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'),
+  eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  eyeOff: svg('<path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7c1.9 0 3.6-.6 5-1.5M3 3l18 18"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')
 };
 // ───────────────────────── MAIN RENDER ─────────────────────────
 function render() {
   const app = document.getElementById("app");
   app.innerHTML = "";
+  document.body.classList.toggle("hide-money", !!state.hideMoney);
 
   const daysInMonth = getDaysInMonth(state.year, state.month);
   const firstDay = getFirstDay(state.year, state.month);
@@ -1171,6 +1183,10 @@ function render() {
     acts.appendChild(el("button", { class:"chip-btn" + (state.multiMode ? " active" : ""), text: state.multiMode ? "✓ Готово" : "Выбрать дни",
       onclick: () => { state.multiMode = !state.multiMode; state.selected = new Set(); state.bulkDropOpen=false; render(); } }));
     acts.appendChild(el("button", { class:"chip-btn", text:"Автографик", onclick: () => { state.showAutoModal = true; render(); } }));
+    const eye = el("button", { class:"chip-btn eye-btn" + (state.hideMoney ? " active" : ""), "aria-label": state.hideMoney ? "Показать суммы" : "Скрыть суммы",
+      onclick: () => { state.hideMoney = !state.hideMoney; saveData(); render(); } });
+    eye.innerHTML = state.hideMoney ? ICONS.eyeOff : ICONS.eye;
+    acts.appendChild(eye);
     header.appendChild(acts);
   }
 
@@ -1208,7 +1224,7 @@ function render() {
     // сводка месяца
     const ms = el("div", { class:"msum" });
     [["Смен", stats.workDays], ["Часов", stats.totalHours + (state.maxHours ? " / " + state.maxHours : "")], ["Брутто", Math.round(netCalc.gross).toLocaleString() + " ₪"]]
-      .forEach((p, i) => { const d = el("div"); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { text: String(p[1]) })); ms.appendChild(d); });
+      .forEach((p, i) => { const d = el("div"); d.appendChild(document.createTextNode(p[0])); d.appendChild(el("b", { class: i === 2 ? "money" : "", text: String(p[1]) })); ms.appendChild(d); });
     app.appendChild(ms);
 
     const grid = el("div", { class:"cal-wrap" });
@@ -1613,7 +1629,7 @@ function render() {
       }
     }});
     misc.appendChild(resetBtn);
-    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 31" }));
+    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 32" }));
 
     // Настройки: список разделов → отдельная страница для каждого
     const cards = [...settingsWrap.children];
@@ -1679,7 +1695,7 @@ function render() {
       const hidden = el("div", { style:"display:none" });
       [find("Заполнить месяц из табеля"), find("Прочее")].forEach(c => { if (c) hidden.appendChild(c); });
       settingsWrap.appendChild(hidden);
-      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 31" }));
+      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 32" }));
     }
     app.appendChild(state.view === "salary" ? salaryWrap : settingsWrap);
   }
@@ -2127,7 +2143,7 @@ function renderPayslipCard(netCalc) {
   head.appendChild(el("span", { text: (pn !== undefined ? (Math.abs(netCalc.net - pn) < 50 ? "✅ " : "⚠️ ") : "") + (open ? "▴" : "▾") }));
   head.addEventListener("click", () => { state.showPayslip = !open; render(); });
   card.appendChild(head);
-  if (pn !== undefined) card.appendChild(el("div", { style:"font-size:12px;margin-top:6px;color:" + (Math.abs(netCalc.net - pn) < 50 ? "#34d399" : "#fbbf24"),
+  if (pn !== undefined) card.appendChild(el("div", { class:"money", style:"font-size:12px;margin-top:6px;color:" + (Math.abs(netCalc.net - pn) < 50 ? "#34d399" : "#fbbf24"),
     text:"Сверка: приложение " + Math.round(netCalc.net).toLocaleString() + " ₪ · листок " + Math.round(pn).toLocaleString() + " ₪ · разница " + (Math.round(netCalc.net - pn) === 0 ? "0" : Math.round(netCalc.net - pn).toLocaleString()) + " ₪" }));
   if (!open) return card;
   card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin:8px 0", text:"Только для этого месяца. Пустое поле — считается по общим правилам." }));
