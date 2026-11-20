@@ -228,6 +228,21 @@
   .gross-card { margin-bottom:12px; }
   .net-card { margin:12px 0; }
   button:focus-visible, a:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  .chart { margin-top:4px; }
+  .chart svg { display:block; overflow:visible; }
+  .chart-tip { font-size:12px; color:var(--muted); min-height:18px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .insight { margin-top:14px; padding:12px; border-radius:12px; background:#0f2a22; border:1px solid #14532d; color:#d1fae5; font-size:13px; line-height:1.45; }
+  .cmp { font-size:13px; font-variant-numeric:tabular-nums; }
+  .cmp-row { display:grid; grid-template-columns:1.5fr 1fr 1fr .8fr; gap:6px; padding:8px 0; border-bottom:1px solid var(--line); align-items:center; }
+  .cmp-row span:not(:first-child) { text-align:right; }
+  .cmp-h { color:var(--subtle); font-size:12px; font-weight:700; }
+  .cmp-row .up { color:var(--ok); } .cmp-row .down { color:var(--bad); }
+  .mtable { margin-top:10px; font-size:12px; font-variant-numeric:tabular-nums; }
+  .mt-row { display:grid; grid-template-columns:1.1fr .6fr .6fr .8fr .9fr 1fr; gap:4px; padding:6px 0; border-bottom:1px solid var(--line); }
+  .mt-row span:not(:first-child) { text-align:right; }
+  .mt-h { color:var(--subtle); font-weight:700; }
+  .nav-ico { width:48px; }
 </style>
 </head>
 <body>
@@ -814,12 +829,221 @@ function renderShiftDropdownItems(onSelect, currentVal) {
   return container;
 }
 
+
+// ───────────────────────── СТАТИСТИКА ─────────────────────────
+// Показатели одного месяца (без перерисовки экрана)
+function monthMetrics(y, m) {
+  const y0 = state.year, m0 = state.month;
+  try {
+    state.year = y; state.month = m;
+    const st = computeStats();
+    const hasData = st.workDays > 0 || mget("netM") !== undefined;
+    if (!hasData) return null;
+    const n = computeNet(st);
+    const pn = mget("netM");
+    const prem = getPremium();
+    const rate = curRate();
+    const ot = st.totalGross > 0 ? (st.totalGross - (st.regularPay || 0)) / st.totalGross : 0;
+    return { y, m, key: y + "-" + String(m + 1).padStart(2, "0"), shifts: st.workDays, hours: st.totalHours,
+      gross: n.gross, net: pn !== undefined ? pn : n.net, netCalc: n.net, fromSlip: pn !== undefined,
+      prem, rate, premHours: rate ? prem / rate : 0, premPerShift: st.workDays ? prem / st.workDays : 0,
+      grossPerHour: st.totalHours ? n.gross / st.totalHours : 0, netPerHour: st.totalHours ? (pn !== undefined ? pn : n.net) / st.totalHours : 0,
+      hb: n.hoursBonus, otShare: ot, shiftsGross: st.totalGross };
+  } finally { state.year = y0; state.month = m0; }
+}
+function allMonths() {
+  const keys = Object.keys(state.shifts).concat(Object.keys(state.netM || {}).map(k => k + "-01")).map(k => k.slice(0, 7)).sort();
+  if (!keys.length) return [];
+  const now = new Date();
+  let y = +keys[0].slice(0, 4), m = +keys[0].slice(5, 7) - 1;
+  const out = [];
+  while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth())) {
+    const r = monthMetrics(y, m); if (r) out.push(r);
+    m++; if (m > 11) { m = 0; y++; }
+  }
+  return out;
+}
+const fmt = (v) => Math.round(v).toLocaleString("ru-RU");
+const MSH = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+// Столбцы по месяцам, два года рядом. Цвета проверены на тёмном фоне (CVD ΔE 26.8).
+const C_CUR = "#3987e5", C_PREV = "#d95926";
+function svgEl(tag, attrs) { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.keys(attrs).forEach(k => e.setAttribute(k, attrs[k])); return e; }
+function groupedBars(prev, cur, yPrev, yCur, field, unit) {
+  const box = el("div", { class:"chart" });
+  const W = 340, H = 170, L = 34, B = 20, T = 8;
+  const vals = [];
+  for (let m = 0; m < 12; m++) { if (prev[m]) vals.push(prev[m][field]); if (cur[m]) vals.push(cur[m][field]); }
+  const max = Math.max.apply(null, vals.concat([1]));
+  const step = Math.pow(10, Math.floor(Math.log10(max))); const top = Math.ceil(max / step) * step;
+  const sv = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width:"100%", role:"img", "aria-label": field });
+  for (let i = 0; i <= 2; i++) {
+    const v = top * i / 2, yy = H - B - (H - B - T) * i / 2;
+    sv.appendChild(svgEl("line", { x1:L, x2:W, y1:yy, y2:yy, stroke:"#26324a", "stroke-width":1 }));
+    const tx = svgEl("text", { x:L - 4, y:yy + 3, "text-anchor":"end", "font-size":9, fill:"#64748b" }); tx.textContent = v >= 1000 ? Math.round(v / 1000) + "к" : Math.round(v); sv.appendChild(tx);
+  }
+  const cw = (W - L) / 12, bw = (cw - 6) / 2;
+  const tip = el("div", { class:"chart-tip", text:"Нажми на месяц" });
+  for (let m = 0; m < 12; m++) {
+    const x0 = L + m * cw + 2;
+    [[prev[m], C_PREV, 0], [cur[m], C_CUR, 1]].forEach(([r, c, k]) => {
+      if (!r) return;
+      const h = Math.max(2, (H - B - T) * r[field] / top);
+      sv.appendChild(svgEl("rect", { x: x0 + k * (bw + 2), y: H - B - h, width: bw, height: h, rx: 2, fill: c }));
+    });
+    const lab = svgEl("text", { x: x0 + bw + 1, y: H - 6, "text-anchor":"middle", "font-size":9, fill:"#64748b" }); lab.textContent = MSH[m][0].toUpperCase() + MSH[m].slice(1, 3); sv.appendChild(lab);
+    const hit = svgEl("rect", { x: L + m * cw, y: 0, width: cw, height: H, fill:"transparent", style:"cursor:pointer" });
+    hit.addEventListener("click", () => {
+      const a = prev[m] ? yPrev + ": " + fmt(prev[m][field]) + unit : yPrev + ": —";
+      const b = cur[m] ? yCur + ": " + fmt(cur[m][field]) + unit : yCur + ": —";
+      const d = prev[m] && cur[m] ? " · " + (cur[m][field] >= prev[m][field] ? "+" : "") + fmt(cur[m][field] - prev[m][field]) + unit : "";
+      tip.textContent = MONTHS_RU[m] + " — " + b + " · " + a + d;
+    });
+    sv.appendChild(hit);
+  }
+  box.appendChild(sv);
+  const lg = el("div", { class:"legend2", style:"padding:4px 0 0" });
+  [[C_CUR, String(yCur)], [C_PREV, String(yPrev)]].forEach(([c, t]) => { const sp = el("span"); sp.appendChild(el("i", { style:"background:" + c })); sp.appendChild(document.createTextNode(t)); lg.appendChild(sp); });
+  box.appendChild(lg); box.appendChild(tip);
+  return box;
+}
+// Одна линия по всем месяцам подряд (без второй оси)
+function lineChart(rows, field, unit, color, opts) {
+  opts = opts || {};
+  const box = el("div", { class:"chart" });
+  const W = 340, H = 140, L = 34, B = 20, T = 10;
+  const pts = rows.filter(r => !(opts.skip && opts.skip(r)));
+  if (pts.length < 2) { box.appendChild(el("div", { class:"hint", text:"Мало данных" })); return box; }
+  const vs = pts.map(r => r[field]);
+  let lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+  const pad = (hi - lo) * 0.15 || hi * 0.1 || 1; lo = Math.max(0, lo - pad); hi = hi + pad;
+  const X = (i) => L + (W - L - 6) * i / (pts.length - 1), Y = (v) => H - B - (H - B - T) * (v - lo) / (hi - lo);
+  const sv = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width:"100%", role:"img" });
+  [lo, (lo + hi) / 2, hi].forEach(v => {
+    sv.appendChild(svgEl("line", { x1:L, x2:W, y1:Y(v), y2:Y(v), stroke:"#26324a", "stroke-width":1 }));
+    const tx = svgEl("text", { x:L - 4, y:Y(v) + 3, "text-anchor":"end", "font-size":9, fill:"#64748b" }); tx.textContent = opts.dec ? v.toFixed(opts.dec) : (v >= 10000 ? Math.round(v / 1000) + "к" : Math.round(v)); sv.appendChild(tx);
+  });
+  // граница лет
+  pts.forEach((r, i) => { if (i && r.y !== pts[i - 1].y) {
+    const xx = (X(i) + X(i - 1)) / 2; sv.appendChild(svgEl("line", { x1:xx, x2:xx, y1:T, y2:H - B, stroke:"#334155", "stroke-dasharray":"3 3" }));
+    const t = svgEl("text", { x:xx + 3, y:T + 8, "font-size":9, fill:"#94a3b8" }); t.textContent = r.y; sv.appendChild(t); } });
+  sv.appendChild(svgEl("polyline", { points: pts.map((r, i) => X(i) + "," + Y(r[field])).join(" "), fill:"none", stroke:color, "stroke-width":2, "stroke-linejoin":"round" }));
+  const tip = el("div", { class:"chart-tip", text:"Нажми на точку" });
+  pts.forEach((r, i) => {
+    sv.appendChild(svgEl("circle", { cx:X(i), cy:Y(r[field]), r:3.5, fill:color, stroke:"#151e30", "stroke-width":2 }));
+    if (i % 3 === 0 || i === pts.length - 1) { const t = svgEl("text", { x:X(i), y:H - 6, "text-anchor":"middle", "font-size":9, fill:"#64748b" }); t.textContent = MSH[r.m]; sv.appendChild(t); }
+    const w = (W - L) / pts.length;
+    const hit = svgEl("rect", { x: X(i) - w / 2, y: 0, width: w, height: H, fill:"transparent", style:"cursor:pointer" });
+    hit.addEventListener("click", () => { tip.textContent = MONTHS_RU[r.m] + " " + r.y + ": " + (opts.dec ? r[field].toFixed(opts.dec) : fmt(r[field])) + unit + (opts.extra ? " · " + opts.extra(r) : ""); });
+    sv.appendChild(hit);
+  });
+  box.appendChild(sv); box.appendChild(tip);
+  return box;
+}
+function statCard(title, sub) { const c = el("div", { class:"settings-card" }); c.appendChild(el("div", { class:"title", text:title })); if (sub) c.appendChild(el("div", { class:"hint", style:"margin:-6px 0 10px", text: sub })); return c; }
+function avg(a, f) { return a.length ? a.reduce((s, r) => s + r[f], 0) / a.length : 0; }
+function sum(a, f) { return a.reduce((s, r) => s + r[f], 0); }
+function pct(a, b) { return b ? (a - b) / b * 100 : 0; }
+function renderStats() {
+  const w = el("div", { class:"summary-padding" });
+  const rows = allMonths();
+  if (!rows.length) { w.appendChild(statCard("Пока нет данных", "Заполни смены или загрузи табели в Настройках.")); return w; }
+  const now = new Date();
+  const yCur = now.getFullYear(), yPrev = yCur - 1;
+  // текущий месяц ещё не закончен — в сравнении его нет
+  const done = rows.filter(r => !(r.y === yCur && r.m === now.getMonth()));
+  const cur = done.filter(r => r.y === yCur), prev = done.filter(r => r.y === yPrev);
+  const lastM = cur.length ? Math.max.apply(null, cur.map(r => r.m)) : 11;
+  const prevAll = prev.filter(r => r.m <= lastM), curAll = cur.filter(r => r.m <= lastM);
+  // «полный» месяц: от 150 ч (без закрытия завода, отпусков и месяцев без табеля)
+  const full = (r) => r.hours >= 150;
+  const yc = statCard("Год к году: " + yCur + " и " + yPrev, "Одинаковые месяцы: январь–" + MONTHS_RU[lastM].toLowerCase() + ". Суммы — по всем месяцам, средние за месяц/час — только по полным месяцам (от 150 ч).");
+  const tbl = el("div", { class:"cmp" });
+  const head = el("div", { class:"cmp-row cmp-h" }); ["", String(yPrev), String(yCur), "Δ"].forEach(t => head.appendChild(el("span", { text:t }))); tbl.appendChild(head);
+  let prevSame = prevAll, curSame = curAll;
+  const line = (lab, a, b, unit, dec, inverse) => {
+    const r = el("div", { class:"cmp-row" });
+    r.appendChild(el("span", { text: lab }));
+    const f = (v) => dec ? v.toFixed(dec) : fmt(v);
+    r.appendChild(el("span", { text: prevSame.length ? f(a) + unit : "—" }));
+    r.appendChild(el("span", { text: curSame.length ? f(b) + unit : "—" }));
+    const d = pct(b, a), good = inverse ? d < 0 : d > 0;
+    r.appendChild(el("span", { class: prevSame.length && curSame.length ? (Math.abs(d) < 0.5 ? "" : (good ? "up" : "down")) : "", text: prevSame.length && curSame.length ? (d > 0 ? "▲ +" : (d < 0 ? "▼ " : "")) + d.toFixed(0) + "%" : "" }));
+    tbl.appendChild(r);
+  };
+  line("Нетто всего", sum(prevSame, "net"), sum(curSame, "net"), " ₪");
+  prevSame = prevAll.filter(full); curSame = curAll.filter(full);
+  line("Нетто в месяц", avg(prevSame, "net"), avg(curSame, "net"), " ₪");
+  line("Брутто в месяц", avg(prevSame, "gross"), avg(curSame, "gross"), " ₪");
+  line("Часов в месяц", avg(prevSame, "hours"), avg(curSame, "hours"), "");
+  line("Смен в месяц", avg(prevSame, "shifts"), avg(curSame, "shifts"), "", 1);
+  line("Ставка", avg(prevSame, "rate"), avg(curSame, "rate"), " ₪", 2);
+  line("Премия 141", avg(prevSame, "prem"), avg(curSame, "prem"), " ₪");
+  line("Нетто за час", avg(prevSame, "netPerHour"), avg(curSame, "netPerHour"), " ₪", 1);
+  yc.appendChild(tbl);
+  w.appendChild(yc);
+
+  const byM = (arr) => { const o = {}; arr.forEach(r => o[r.m] = r); return o; };
+  const c1 = statCard("Нетто по месяцам", "Нажми на месяц — покажу обе суммы и разницу.");
+  c1.appendChild(groupedBars(byM(prev), byM(cur), yPrev, yCur, "net", " ₪"));
+  w.appendChild(c1);
+  const c2 = statCard("Часы по месяцам", "Лимит " + (state.maxHours || 240) + " ч.");
+  c2.appendChild(groupedBars(byM(prev), byM(cur), yPrev, yCur, "hours", " ч"));
+  w.appendChild(c2);
+
+  // ── Премия 141 ──
+  const premRows = done.filter(r => r.prem > 0 && full(r) && (r.y < yCur || (state.premiums && state.premiums[r.key] !== undefined)));
+  const pc = statCard("Премия (код 141)", "Только полные месяцы (от 150 ч) с известной премией — без закрытия завода и текущего месяца.");
+  pc.appendChild(lineChart(premRows, "prem", " ₪", C_CUR, { extra: r => "ставка " + r.rate + " ₪/ч" }));
+  pc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Ставка в час" }));
+  pc.appendChild(lineChart(rows, "rate", " ₪/ч", "#9085e9", { dec: 2 }));
+  pc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Премия в часах работы (премия ÷ ставка)" }));
+  pc.appendChild(lineChart(premRows, "premHours", " ч", "#199e70", { dec: 1 }));
+  pc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Премия на одну смену" }));
+  pc.appendChild(lineChart(premRows, "premPerShift", " ₪", "#c98500", { extra: r => r.shifts + " смен" }));
+  // вывод
+  const pPrev = premRows.filter(r => r.y === yPrev), pCur = premRows.filter(r => r.y === yCur);
+  if (pPrev.length && pCur.length) {
+    const dR = pct(avg(pCur, "rate"), avg(pPrev, "rate")), dP = pct(avg(pCur, "prem"), avg(pPrev, "prem")), dH = pct(avg(pCur, "premHours"), avg(pPrev, "premHours"));
+    const dS = pct(avg(pCur, "premPerShift"), avg(pPrev, "premPerShift"));
+    const t = "В среднем за месяц: ставка " + (dR >= 0 ? "+" : "") + dR.toFixed(0) + "%, премия " + (dP >= 0 ? "+" : "") + dP.toFixed(0) + "% (" + fmt(avg(pPrev, "prem")) + " → " + fmt(avg(pCur, "prem")) + " ₪). " +
+      "В часах работы премия " + avg(pPrev, "premHours").toFixed(1) + " → " + avg(pCur, "premHours").toFixed(1) + " ч (" + (dH >= 0 ? "+" : "") + dH.toFixed(0) + "%), на смену " + fmt(avg(pPrev, "premPerShift")) + " → " + fmt(avg(pCur, "premPerShift")) + " ₪ (" + (dS >= 0 ? "+" : "") + dS.toFixed(0) + "%).";
+    pc.appendChild(el("div", { class:"insight", text: t }));
+  }
+  w.appendChild(pc);
+
+  // ── Что ещё сравнить ──
+  const oc = statCard("Из чего складывается заработок", "Доля переработки и шабатов в оплате смен и сколько выходит за час.");
+  oc.appendChild(el("div", { class:"field-label", text:"Брутто за час (всё вместе)" }));
+  oc.appendChild(lineChart(done.filter(full), "grossPerHour", " ₪/ч", C_CUR));
+  oc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Доля переработки, шабатов и надбавок в оплате смен" }));
+  oc.appendChild(lineChart(done.filter(full).map(r => Object.assign({}, r, { otPct: r.otShare * 100 })), "otPct", " %", C_PREV, { dec: 0 }));
+  w.appendChild(oc);
+
+  // ── Таблица ──
+  const tc = statCard("Таблица по месяцам");
+  const open = !!state.statsTable;
+  const tb = el("button", { class:"toggle-btn", text: open ? "Скрыть таблицу" : "Показать таблицу" });
+  tb.addEventListener("click", () => { state.statsTable = !open; render(); });
+  tc.appendChild(tb);
+  if (open) {
+    const t = el("div", { class:"mtable" });
+    const h = el("div", { class:"mt-row mt-h" }); ["Месяц","Смен","Часы","Ставка","Премия","Нетто"].forEach(x => h.appendChild(el("span", { text:x }))); t.appendChild(h);
+    rows.slice().reverse().forEach(r => { const rr = el("div", { class:"mt-row" });
+      [MSH[r.m] + " " + String(r.y).slice(2), r.shifts, r.hours, r.rate.toFixed(2), fmt(r.prem), fmt(r.net) + (r.fromSlip ? "" : "*")].forEach(x => rr.appendChild(el("span", { text: String(x) }))); t.appendChild(rr); });
+    tc.appendChild(t);
+    tc.appendChild(el("div", { class:"hint", text:"* — расчёт приложения, листка нет." }));
+  }
+  w.appendChild(tc);
+  return w;
+}
+
 // Иконки нижней панели (обводка, 24px)
 const svg = (d) => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
 const ICONS = {
   cal: svg('<rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>'),
   money: svg('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/>'),
   alarm: svg('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 2M4.5 4.5 2.5 6.5M19.5 4.5l2 2"/>'),
+  chart: svg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')
 };
 // ───────────────────────── MAIN RENDER ─────────────────────────
@@ -838,7 +1062,7 @@ function render() {
   headerTop.appendChild(el("button", { class:"nav-btn", text:"‹", onclick: () => changeMonth(-1) }));
   const titleBox = el("div", { class:"month-title" });
   const monthView = state.view === "calendar" || state.view === "salary";
-  titleBox.appendChild(el("div", { class:"name", text: monthView ? MONTHS_RU[state.month] + " " + state.year : (state.view === "alarm" ? "Будильник" : "Настройки") }));
+  titleBox.appendChild(el("div", { class:"name", text: monthView ? MONTHS_RU[state.month] + " " + state.year : ({ alarm:"Будильник", stats:"Статистика" }[state.view] || "Настройки") }));
   if (monthView) titleBox.appendChild(el("div", { class:"sub", id:"hdr-net", text: Math.round(netCalc.net).toLocaleString() + " ₪ нетто · " + stats.totalHours + " ч" }));
   headerTop.appendChild(titleBox);
   headerTop.appendChild(el("button", { class:"nav-btn", text:"›", onclick: () => changeMonth(1) }));
@@ -1291,7 +1515,7 @@ function render() {
       }
     }});
     misc.appendChild(resetBtn);
-    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 27" }));
+    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 28" }));
 
     // Настройки: раскладываем карточки по разделам
     const groups = [["Данные", ["Заполнить месяц из табеля", "Резервная копия"]],
@@ -1315,6 +1539,8 @@ function render() {
       const first = t.firstElementChild; if (first) first.textContent = clean(first.textContent); else t.textContent = clean(t.textContent); }));
     app.appendChild(state.view === "salary" ? salaryWrap : settingsWrap);
   }
+
+  if (state.view === "stats") app.appendChild(renderStats());
 
   // ── ALARM VIEW ──
   if (state.view === "alarm") {
@@ -1343,7 +1569,7 @@ function render() {
 
   // ── BOTTOM BAR ──
   const bottomBar = el("nav", { class:"bottom-bar" });
-  [["calendar","Календарь",ICONS.cal],["salary","Зарплата",ICONS.money],["alarm","Будильник",ICONS.alarm],["settings","Настройки",ICONS.gear]].forEach(([v, lab, ic]) => {
+  [["calendar","Календарь",ICONS.cal],["salary","Зарплата",ICONS.money],["stats","Статистика",ICONS.chart],["alarm","Будильник",ICONS.alarm],["settings","Настройки",ICONS.gear]].forEach(([v, lab, ic]) => {
     const b = el("button", { class:"nav-item" + (state.view === v ? " active" : ""), "aria-label": lab });
     const ico = el("span", { class:"nav-ico" }); ico.innerHTML = ic;
     b.appendChild(ico); b.appendChild(el("span", { class:"nav-lab", text: lab }));
