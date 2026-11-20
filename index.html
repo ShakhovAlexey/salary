@@ -285,6 +285,21 @@
   body.hide-money .net-card .value, body.hide-money .net-card .net-row span:last-child, body.hide-money .net-card .hint,
   body.hide-money .settings-card .net-row span:last-child, body.hide-money .premium-input, body.hide-money .dy-g, body.hide-money .wk-g,
   body.hide-money .modal-sub { filter:blur(7px); user-select:none; }
+
+  .seg { display:flex; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:3px; gap:3px; }
+  .seg-btn { flex:1; min-height:40px; border:none; border-radius:9px; background:none; color:var(--muted); font-size:14px; font-weight:700; cursor:pointer; }
+  .seg-btn.on { background:var(--accent-bg); color:#fff; }
+  .month-step { display:flex; align-items:center; justify-content:space-between; margin:12px 0 0; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:2px; }
+  .month-step-name { font-size:17px; font-weight:700; }
+  .cmp-lab { color:var(--muted); }
+  .cmp-row span:first-child { text-align:left; }
+  .sec-head { width:100%; display:flex; justify-content:space-between; align-items:center; background:none; border:none; padding:0; color:var(--text); cursor:pointer; text-align:left; }
+  .hbar { display:grid; grid-template-columns:44px 1fr auto; align-items:center; gap:10px; margin:8px 0; font-size:13px; }
+  .hbar-lab { color:var(--muted); font-weight:600; }
+  .hbar-track { height:14px; background:var(--surface-2); border-radius:7px; overflow:hidden; }
+  .hbar-fill { height:100%; border-radius:7px; }
+  .hbar-val { font-variant-numeric:tabular-nums; font-weight:700; }
+  body.hide-money .money { filter:blur(7px); }
 </style>
 </head>
 <body>
@@ -559,7 +574,7 @@ const state = {
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
   hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1000,
-  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showMonthPicker: false, pickerYear: null, showForecast: false, settingsPage: null,
+  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showMonthPicker: false, statsMode: "month", statsOpen: {}, pickerYear: null, showForecast: false, settingsPage: null,
   selected: new Set(),
   bulkDropOpen: false,
   dayDropOpen: false,
@@ -892,7 +907,8 @@ function monthMetrics(y, m) {
       gross: n.gross, net: pn !== undefined ? pn : n.net, netCalc: n.net, fromSlip: pn !== undefined,
       prem, rate, premHours: rate ? prem / rate : 0, premPerShift: st.workDays ? prem / st.workDays : 0,
       grossPerHour: st.totalHours ? n.gross / st.totalHours : 0, netPerHour: st.totalHours ? (pn !== undefined ? pn : n.net) / st.totalHours : 0,
-      hb: n.hoursBonus, ref: n.referral || 0, otShare: ot, shiftsGross: st.totalGross };
+      hb: n.hoursBonus, ref: n.referral || 0, otShare: ot, shiftsGross: st.totalGross,
+      tax: n.incomeTax, bl: n.bituach, pens: n.pension + n.kehesh };
   } finally { state.year = y0; state.month = m0; }
 }
 function allMonths() {
@@ -1017,115 +1033,185 @@ function statCard(title, sub) { const c = el("div", { class:"settings-card" }); 
 function avg(a, f) { return a.length ? a.reduce((s, r) => s + r[f], 0) / a.length : 0; }
 function sum(a, f) { return a.reduce((s, r) => s + r[f], 0); }
 function pct(a, b) { return b ? (a - b) / b * 100 : 0; }
+// Сравнительная таблица: строки — показатели, колонки — годы, последняя — изменение к прошлому году
+function cmpTable(cols, rows) {
+  const t = el("div", { class:"cmp" });
+  const n = cols.length;
+  const grid = "1.4fr " + "1fr ".repeat(n) + (n > 1 ? ".75fr" : "");
+  const head = el("div", { class:"cmp-row cmp-h", style:"grid-template-columns:" + grid });
+  head.appendChild(el("span"));
+  cols.forEach(c => head.appendChild(el("span", { text: c.label })));
+  if (n > 1) head.appendChild(el("span", { text:"Δ" }));
+  t.appendChild(head);
+  rows.forEach(([lab, f, unit, dec, inverse, money]) => {
+    const r = el("div", { class:"cmp-row", style:"grid-template-columns:" + grid });
+    r.appendChild(el("span", { class:"cmp-lab", text: lab }));
+    const vals = cols.map(c => c.data ? f(c.data) : null);
+    vals.forEach(v => r.appendChild(el("span", { class: money ? "money" : "", text: v === null || v === undefined || isNaN(v) ? "—" : (dec ? v.toFixed(dec) : fmt(v)) + unit })));
+    if (n > 1) {
+      const last = cols[n - 1];
+      const a = last.base ? f(last.base) : vals[n - 2], b = vals[n - 1];
+      if (a && b !== null && b !== undefined) {
+        const d = pct(b, a), good = inverse ? d < 0 : d > 0;
+        r.appendChild(el("span", { class: Math.abs(d) < 0.5 ? "" : (good ? "up" : "down"), text: (d > 0 ? "+" : "") + d.toFixed(0) + "%" }));
+      } else r.appendChild(el("span", { text:"" }));
+    }
+    t.appendChild(r);
+  });
+  return t;
+}
+function section(key, title, sub, build) {
+  const open = !!(state.statsOpen && state.statsOpen[key]);
+  const c = el("div", { class:"settings-card" });
+  const h = el("button", { class:"sec-head" });
+  h.appendChild(el("span", { class:"title", style:"margin:0", text: title }));
+  h.appendChild(el("span", { class:"set-chev", text: open ? "▴" : "▾" }));
+  h.addEventListener("click", () => { state.statsOpen = state.statsOpen || {}; state.statsOpen[key] = !open; render(); });
+  c.appendChild(h);
+  if (sub && !open) c.appendChild(el("div", { class:"hint", style:"margin-top:4px", text: sub }));
+  if (open) { if (sub) c.appendChild(el("div", { class:"hint", style:"margin:4px 0 10px", text: sub })); build(c); }
+  return c;
+}
 function renderStats() {
   const w = el("div", { class:"summary-padding" });
   const rows = allMonths();
   if (!rows.length) { w.appendChild(statCard("Пока нет данных", "Заполни смены или загрузи табели в Настройках.")); return w; }
   const now = new Date();
-  const yCur = now.getFullYear(), yPrev = yCur - 1;
-  // текущий месяц ещё не закончен — в сравнении его нет
-  const done = rows.filter(r => !(r.y === yCur && r.m === now.getMonth()));
-  const cur = done.filter(r => r.y === yCur), prev = done.filter(r => r.y === yPrev);
-  const lastM = cur.length ? Math.max.apply(null, cur.map(r => r.m)) : 11;
-  const prevAll = prev.filter(r => r.m <= lastM), curAll = cur.filter(r => r.m <= lastM);
-  // «полный» месяц: от 150 ч (без закрытия завода, отпусков и месяцев без табеля)
+  const done = rows.filter(r => !(r.y === now.getFullYear() && r.m === now.getMonth()));
+  const years = [...new Set(rows.map(r => r.y))].sort();
+  const mode = state.statsMode || "month";
+
+  // переключатель Месяц / Год
+  const seg = el("div", { class:"seg" });
+  [["month","По месяцу"],["year","По годам"]].forEach(([k, t]) => {
+    const b = el("button", { class:"seg-btn" + (mode === k ? " on" : ""), text: t });
+    b.addEventListener("click", () => { state.statsMode = k; render(); });
+    seg.appendChild(b);
+  });
+  w.appendChild(seg);
+
   const full = (r) => r.hours >= 150;
-  const yc = statCard("Год к году: " + yCur + " и " + yPrev, "Одинаковые месяцы: январь–" + MONTHS_RU[lastM].toLowerCase() + ". Суммы — по всем месяцам, средние за месяц/час — только по полным месяцам (от 150 ч).");
-  const tbl = el("div", { class:"cmp" });
-  const head = el("div", { class:"cmp-row cmp-h" }); ["", String(yPrev), String(yCur), "Δ"].forEach(t => head.appendChild(el("span", { text:t }))); tbl.appendChild(head);
-  let prevSame = prevAll, curSame = curAll;
-  const line = (lab, a, b, unit, dec, inverse) => {
-    const r = el("div", { class:"cmp-row" });
-    r.appendChild(el("span", { text: lab }));
-    const f = (v) => dec ? v.toFixed(dec) : fmt(v);
-    r.appendChild(el("span", { text: prevSame.length ? f(a) + unit : "—" }));
-    r.appendChild(el("span", { text: curSame.length ? f(b) + unit : "—" }));
-    const d = pct(b, a), good = inverse ? d < 0 : d > 0;
-    r.appendChild(el("span", { class: prevSame.length && curSame.length ? (Math.abs(d) < 0.5 ? "" : (good ? "up" : "down")) : "", text: prevSame.length && curSame.length ? (d > 0 ? "▲ +" : (d < 0 ? "▼ " : "")) + d.toFixed(0) + "%" : "" }));
-    tbl.appendChild(r);
-  };
-  line("Нетто всего", sum(prevSame, "net"), sum(curSame, "net"), " ₪");
-  prevSame = prevAll.filter(full); curSame = curAll.filter(full);
-  line("Нетто в месяц", avg(prevSame, "net"), avg(curSame, "net"), " ₪");
-  line("Брутто в месяц", avg(prevSame, "gross"), avg(curSame, "gross"), " ₪");
-  line("Часов в месяц", avg(prevSame, "hours"), avg(curSame, "hours"), "");
-  line("Смен в месяц", avg(prevSame, "shifts"), avg(curSame, "shifts"), "", 1);
-  line("Ставка", avg(prevSame, "rate"), avg(curSame, "rate"), " ₪", 2);
-  line("Премия 141", avg(prevSame, "prem"), avg(curSame, "prem"), " ₪");
-  line("Нетто за час", avg(prevSame, "netPerHour"), avg(curSame, "netPerHour"), " ₪", 1);
-  yc.appendChild(tbl);
-  w.appendChild(yc);
+  const METRICS = [
+    ["Нетто", r => r.net, " ₪", 0, false, true],
+    ["Брутто", r => r.gross, " ₪", 0, false, true],
+    ["Часы", r => r.hours, "", 0],
+    ["Смены", r => r.shifts, "", 0],
+    ["Ставка", r => r.rate, " ₪", 2],
+    ["Премия 141", r => r.prem, " ₪", 0, false, true],
+    ["Бонус за часы", r => r.hb, " ₪", 0, false, true],
+    ["Нетто за час", r => r.hours ? r.net / r.hours : null, " ₪", 1, false, true],
+    ["Премия на смену", r => r.shifts ? r.prem / r.shifts : null, " ₪", 0, false, true],
+    ["Налог", r => r.tax, " ₪", 0, true, true]
+  ];
 
-  const byM = (arr) => { const o = {}; arr.forEach(r => o[r.m] = r); return o; };
-  const c1 = statCard("Нетто по месяцам", "Нажми на месяц — покажу обе суммы и разницу.");
-  c1.appendChild(groupedBars(byM(prev), byM(cur), yPrev, yCur, "net", " ₪"));
-  w.appendChild(c1);
-  const c2 = statCard("Часы по месяцам", "Лимит " + (state.maxHours || 240) + " ч.");
-  c2.appendChild(groupedBars(byM(prev), byM(cur), yPrev, yCur, "hours", " ч"));
-  w.appendChild(c2);
+  if (mode === "month") {
+    // выбор месяца
+    const ms = el("div", { class:"month-step" });
+    const p = el("button", { class:"nav-btn", text:"‹" }); p.addEventListener("click", () => { state.month = (state.month + 11) % 12; saveData(); render(); });
+    const n = el("button", { class:"nav-btn", text:"›" }); n.addEventListener("click", () => { state.month = (state.month + 1) % 12; saveData(); render(); });
+    ms.appendChild(p); ms.appendChild(el("div", { class:"month-step-name", text: MONTHS_RU[state.month] })); ms.appendChild(n);
+    w.appendChild(ms);
+    const same = years.map(y => ({ label: String(y), data: rows.find(r => r.y === y && r.m === state.month) || null }));
+    const withData = same.filter(c => c.data);
+    const card = statCard(MONTHS_RU[state.month] + " по годам", withData.length < 2 ? "Есть данные только за один год — сравнить пока не с чем." : "Δ — изменение к прошлому году." + (same.some(c => c.data && c.data.y === now.getFullYear() && c.data.m === now.getMonth()) ? " Текущий месяц ещё не закончен." : ""));
+    card.appendChild(cmpTable(same.filter(c => c.data), METRICS));
+    w.appendChild(card);
+    // столбики «нетто» за этот месяц по годам
+    if (withData.length >= 2) {
+      const bc = statCard("Нетто в " + MONTHS_RU[state.month].toLowerCase().replace(/ь$/, "е").replace(/й$/, "е").replace(/т$/, "те") );
+      const max = Math.max.apply(null, withData.map(c => c.data.net));
+      withData.forEach((c, i) => {
+        const row = el("div", { class:"hbar" });
+        row.appendChild(el("span", { class:"hbar-lab", text: c.label }));
+        const track = el("div", { class:"hbar-track" });
+        track.appendChild(el("div", { class:"hbar-fill", style:"width:" + Math.round(c.data.net / max * 100) + "%;background:" + (i === withData.length - 1 ? C_CUR : "#475569") }));
+        row.appendChild(track);
+        row.appendChild(el("span", { class:"hbar-val money", text: fmt(c.data.net) + " ₪" }));
+        bc.appendChild(row);
+      });
+      w.appendChild(bc);
+    }
+  } else {
+    // по годам: суммы и средние
+    const cols = years.map(y => { const a = done.filter(r => r.y === y); return { label: String(y) + (a.length < 12 ? "*" : ""), data: a.length ? a : null }; });
+    const lastC = cols[cols.length - 1];
+    if (cols.length > 1 && lastC.data && lastC.data.length < 12) {
+      const ms = lastC.data.map(r => r.m), py = years[years.length - 2];
+      lastC.base = done.filter(r => r.y === py && ms.indexOf(r.m) >= 0);
+    }
+    const avgF = (f) => (a) => { const x = a.filter(full); return x.length ? x.reduce((s, r) => s + f(r), 0) / x.length : null; };
+    const sumF = (f) => (a) => a.reduce((s, r) => s + (f(r) || 0), 0);
+    const yc = statCard("Итоги по годам", "* — год не полный (" + cols.filter(c => c.label.indexOf("*") > 0).map(c => c.label.replace("*", "") + ": " + c.data.length + " мес.").join(", ") + "). Средние — по полным месяцам (от 150 ч)." + (lastC.base ? " Δ сравнивает с теми же месяцами прошлого года (" + MSH[0] + "–" + MSH[lastC.data[lastC.data.length-1].m] + ")." : ""));
+    yc.appendChild(el("div", { class:"field-label", style:"margin-top:0", text:"За год" }));
+    yc.appendChild(cmpTable(cols, [
+      ["Нетто", sumF(r => r.net), " ₪", 0, false, true],
+      ["Брутто", sumF(r => r.gross), " ₪", 0, false, true],
+      ["Часы", sumF(r => r.hours), "", 0],
+      ["Смены", sumF(r => r.shifts), "", 0],
+      ["Премии 141", sumF(r => r.prem), " ₪", 0, false, true],
+      ["Бонус за часы", sumF(r => r.hb), " ₪", 0, false, true],
+      ["За работника", sumF(r => r.ref), " ₪", 0, false, true],
+      ["Налог", sumF(r => r.tax), " ₪", 0, true, true],
+      ["Битуах + здоровье", sumF(r => r.bl), " ₪", 0, true, true],
+      ["Пенсия + керен", sumF(r => r.pens), " ₪", 0, false, true]]));
+    yc.appendChild(el("div", { class:"field-label", text:"В среднем за месяц" }));
+    yc.appendChild(cmpTable(cols, [
+      ["Нетто", avgF(r => r.net), " ₪", 0, false, true],
+      ["Часы", avgF(r => r.hours), "", 0],
+      ["Ставка", avgF(r => r.rate), " ₪", 2],
+      ["Премия 141", avgF(r => r.prem), " ₪", 0, false, true],
+      ["Премия на смену", avgF(r => r.shifts ? r.prem / r.shifts : 0), " ₪", 0, false, true],
+      ["Нетто за час", avgF(r => r.hours ? r.net / r.hours : 0), " ₪", 1, false, true]]));
+    w.appendChild(yc);
 
-  // ── Премия 141 ──
-  const premRows = done.filter(r => r.prem > 0 && full(r) && (r.y < yCur || (state.premiums && state.premiums[r.key] !== undefined)));
-  const pc = statCard("Премия (код 141)", "Только полные месяцы (от 150 ч) с известной премией — без закрытия завода и текущего месяца.");
-  pc.appendChild(lineChart(premRows, "prem", " ₪", C_CUR, { extra: r => "ставка " + r.rate + " ₪/ч" }));
-  pc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Ставка в час" }));
-  pc.appendChild(lineChart(rows, "rate", " ₪/ч", "#9085e9", { dec: 2 }));
-  pc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Премия в часах работы (премия ÷ ставка)" }));
-  pc.appendChild(lineChart(premRows, "premHours", " ч", "#199e70", { dec: 1 }));
-  pc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Премия на одну смену" }));
-  pc.appendChild(lineChart(premRows, "premPerShift", " ₪", "#c98500", { extra: r => r.shifts + " смен" }));
-  // вывод
-  const pPrev = premRows.filter(r => r.y === yPrev), pCur = premRows.filter(r => r.y === yCur);
-  if (pPrev.length && pCur.length) {
-    const dR = pct(avg(pCur, "rate"), avg(pPrev, "rate")), dP = pct(avg(pCur, "prem"), avg(pPrev, "prem")), dH = pct(avg(pCur, "premHours"), avg(pPrev, "premHours"));
-    const dS = pct(avg(pCur, "premPerShift"), avg(pPrev, "premPerShift"));
-    const t = "В среднем за месяц: ставка " + (dR >= 0 ? "+" : "") + dR.toFixed(0) + "%, премия " + (dP >= 0 ? "+" : "") + dP.toFixed(0) + "% (" + fmt(avg(pPrev, "prem")) + " → " + fmt(avg(pCur, "prem")) + " ₪). " +
-      "В часах работы премия " + avg(pPrev, "premHours").toFixed(1) + " → " + avg(pCur, "premHours").toFixed(1) + " ч (" + (dH >= 0 ? "+" : "") + dH.toFixed(0) + "%), на смену " + fmt(avg(pPrev, "premPerShift")) + " → " + fmt(avg(pCur, "premPerShift")) + " ₪ (" + (dS >= 0 ? "+" : "") + dS.toFixed(0) + "%).";
-    pc.appendChild(el("div", { class:"insight", text: t }));
+    // нетто и часы по месяцам: два последних года рядом
+    const yCur = years[years.length - 1], yPrev = yCur - 1;
+    const byM = (y) => { const o = {}; done.filter(r => r.y === y).forEach(r => o[r.m] = r); return o; };
+    w.appendChild(section("netm", "Нетто по месяцам: " + yPrev + " и " + yCur, "Столбики рядом, нажми на месяц.", c => c.appendChild(groupedBars(byM(yPrev), byM(yCur), yPrev, yCur, "net", " ₪"))));
+    w.appendChild(section("hoursm", "Часы по месяцам: " + yPrev + " и " + yCur, "Лимит " + (state.maxHours || 240) + " ч.", c => c.appendChild(groupedBars(byM(yPrev), byM(yCur), yPrev, yCur, "hours", " ч"))));
+
+    // премия
+    const premRows = done.filter(r => r.prem > 0 && full(r) && (r.y < yCur || (state.premiums && state.premiums[r.key] !== undefined)));
+    const pP = premRows.filter(r => r.y === yPrev), pC = premRows.filter(r => r.y === yCur);
+    let premSub = "Как менялась премия и ставка.";
+    if (pP.length && pC.length) premSub = "Премия " + fmt(avg(pP, "prem")) + " → " + fmt(avg(pC, "prem")) + " ₪ (" + pct(avg(pC, "prem"), avg(pP, "prem")).toFixed(0) + "%), ставка " + avg(pP, "rate").toFixed(2) + " → " + avg(pC, "rate").toFixed(2) + " ₪ (+" + pct(avg(pC, "rate"), avg(pP, "rate")).toFixed(0) + "%).";
+    w.appendChild(section("prem", "Премия 141 и ставка", premSub, c => {
+      c.appendChild(el("div", { class:"field-label", style:"margin-top:0", text:"Премия, ₪" }));
+      c.appendChild(lineChart(premRows, "prem", " ₪", C_CUR, { extra: r => "ставка " + r.rate + " ₪/ч" }));
+      c.appendChild(el("div", { class:"field-label", text:"Ставка, ₪/ч" }));
+      c.appendChild(lineChart(rows, "rate", " ₪/ч", "#9085e9", { dec: 2 }));
+      c.appendChild(el("div", { class:"field-label", text:"Премия в часах работы (премия ÷ ставка)" }));
+      c.appendChild(lineChart(premRows, "premHours", " ч", "#199e70", { dec: 1 }));
+      c.appendChild(el("div", { class:"field-label", text:"Премия на одну смену, ₪" }));
+      c.appendChild(lineChart(premRows, "premPerShift", " ₪", "#c98500", { extra: r => r.shifts + " смен" }));
+    }));
+
+    // бонус 167
+    const refList = done.filter(r => r.ref > 0).map(r => MONTHS_RU[r.m].toLowerCase() + " " + r.y + " — " + fmt(r.ref) + " ₪").join(", ");
+    w.appendChild(section("b167", "Бонус 167", refList ? "За приведённых работников: " + refList + "." : "Бонус за часы по месяцам.", c => {
+      c.appendChild(stackBars(done, [["hb", C_CUR, "за часы"], ["ref", C_PREV, "за работника"]]));
+    }));
+
+    // заработок за час
+    w.appendChild(section("hour", "Заработок за час и переработка", "Брутто за час и доля переработки, шабатов и надбавок.", c => {
+      c.appendChild(el("div", { class:"field-label", style:"margin-top:0", text:"Брутто за час, ₪" }));
+      c.appendChild(lineChart(done.filter(full), "grossPerHour", " ₪/ч", C_CUR));
+      c.appendChild(el("div", { class:"field-label", text:"Доля переработки и надбавок в оплате смен, %" }));
+      c.appendChild(lineChart(done.filter(full).map(r => Object.assign({}, r, { otPct: r.otShare * 100 })), "otPct", " %", C_PREV, { dec: 0 }));
+    }));
+
+    // таблица
+    w.appendChild(section("table", "Таблица по месяцам", "Все месяцы: смены, часы, ставка, премия, нетто.", c => {
+      const t = el("div", { class:"mtable" });
+      const h = el("div", { class:"mt-row mt-h" }); ["Месяц","Смен","Часы","Ставка","Премия","Нетто"].forEach(x => h.appendChild(el("span", { text:x }))); t.appendChild(h);
+      rows.slice().reverse().forEach(r => { const rr = el("div", { class:"mt-row" });
+        [MSH[r.m] + " " + String(r.y).slice(2), r.shifts, r.hours, r.rate.toFixed(2), fmt(r.prem), fmt(r.net) + (r.fromSlip ? "" : "*")].forEach((x, i) => rr.appendChild(el("span", { class: i >= 4 ? "money" : "", text: String(x) }))); t.appendChild(rr); });
+      c.appendChild(t);
+      c.appendChild(el("div", { class:"hint", text:"* — расчёт приложения, листка нет." }));
+    }));
   }
-  w.appendChild(pc);
-
-  // ── Бонус 167 ──
-  const bc = statCard("Бонус 167", "Синее — бонус за часы, оранжевое — вознаграждение за приведённого работника. Нажми на месяц.");
-  bc.appendChild(stackBars(done, [["hb", C_CUR, "за часы"], ["ref", C_PREV, "за работника"]]));
-  const yrs = [yPrev, yCur].map(y => { const a = done.filter(r => r.y === y); return { y, hb: sum(a, "hb"), n: a.filter(r => r.hb > 0).length, ref: sum(a, "ref"), refs: a.filter(r => r.ref > 0) }; });
-  const bt = el("div", { class:"cmp", style:"margin-top:10px" });
-  const bh = el("div", { class:"cmp-row cmp-h" }); ["", "За часы", "Месяцев", "За работника"].forEach(t => bh.appendChild(el("span", { text:t }))); bt.appendChild(bh);
-  yrs.forEach(x => { const r = el("div", { class:"cmp-row" }); [String(x.y), fmt(x.hb) + " ₪", String(x.n), x.ref ? fmt(x.ref) + " ₪" : "—"].forEach(t => r.appendChild(el("span", { text:t }))); bt.appendChild(r); });
-  bc.appendChild(bt);
-  const refList = done.filter(r => r.ref > 0).map(r => MONTHS_RU[r.m].toLowerCase() + " " + r.y + " — " + fmt(r.ref) + " ₪").join(", ");
-  // как менялась сумма бонуса за часы: по годам «сумма × сколько месяцев»
-  const rule = [yPrev, yCur].map(y => { const c = {}; done.filter(r => r.y === y && r.hb >= 400).forEach(r => c[r.hb] = (c[r.hb] || 0) + 1);
-    const k = Object.keys(c).sort((a, b) => a - b); return k.length ? y + ": " + k.map(v => fmt(+v) + " ₪ × " + c[v]).join(", ") : ""; }).filter(Boolean).join("; ");
-  bc.appendChild(el("div", { class:"insight", text: (refList ? "За приведённых работников: " + refList + ". " : "") + (rule ? "Бонус за часы (сумма × месяцев) — " + rule + "." : "") }));
-  w.appendChild(bc);
-
-  // ── Что ещё сравнить ──
-  const oc = statCard("Из чего складывается заработок", "Доля переработки и шабатов в оплате смен и сколько выходит за час.");
-  oc.appendChild(el("div", { class:"field-label", text:"Брутто за час (всё вместе)" }));
-  oc.appendChild(lineChart(done.filter(full), "grossPerHour", " ₪/ч", C_CUR));
-  oc.appendChild(el("div", { class:"field-label", style:"margin-top:14px", text:"Доля переработки, шабатов и надбавок в оплате смен" }));
-  oc.appendChild(lineChart(done.filter(full).map(r => Object.assign({}, r, { otPct: r.otShare * 100 })), "otPct", " %", C_PREV, { dec: 0 }));
-  w.appendChild(oc);
-
-  // ── Таблица ──
-  const tc = statCard("Таблица по месяцам");
-  const open = !!state.statsTable;
-  const tb = el("button", { class:"toggle-btn", text: open ? "Скрыть таблицу" : "Показать таблицу" });
-  tb.addEventListener("click", () => { state.statsTable = !open; render(); });
-  tc.appendChild(tb);
-  if (open) {
-    const t = el("div", { class:"mtable" });
-    const h = el("div", { class:"mt-row mt-h" }); ["Месяц","Смен","Часы","Ставка","Премия","Нетто"].forEach(x => h.appendChild(el("span", { text:x }))); t.appendChild(h);
-    rows.slice().reverse().forEach(r => { const rr = el("div", { class:"mt-row" });
-      [MSH[r.m] + " " + String(r.y).slice(2), r.shifts, r.hours, r.rate.toFixed(2), fmt(r.prem), fmt(r.net) + (r.fromSlip ? "" : "*")].forEach(x => rr.appendChild(el("span", { text: String(x) }))); t.appendChild(rr); });
-    tc.appendChild(t);
-    tc.appendChild(el("div", { class:"hint", text:"* — расчёт приложения, листка нет." }));
-  }
-  w.appendChild(tc);
   return w;
 }
-
 // Иконки нижней панели (обводка, 24px)
 const svg = (d) => '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
 const ICONS = {
@@ -1629,7 +1715,7 @@ function render() {
       }
     }});
     misc.appendChild(resetBtn);
-    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 32" }));
+    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 33" }));
 
     // Настройки: список разделов → отдельная страница для каждого
     const cards = [...settingsWrap.children];
@@ -1695,7 +1781,7 @@ function render() {
       const hidden = el("div", { style:"display:none" });
       [find("Заполнить месяц из табеля"), find("Прочее")].forEach(c => { if (c) hidden.appendChild(c); });
       settingsWrap.appendChild(hidden);
-      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 32" }));
+      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 33" }));
     }
     app.appendChild(state.view === "salary" ? salaryWrap : settingsWrap);
   }
