@@ -266,6 +266,17 @@
   .toggle-pill.on::after { left:21px; background:#fff; }
   .settings-card .field-label { margin-top:14px; }
   .settings-card > .hint:first-child, .settings-card > div:first-child { margin-top:0; }
+
+  .month-title.tappable { cursor:pointer; padding:4px 12px; border-radius:12px; }
+  .month-title.tappable:active { background:var(--surface-2); }
+  .picker-year { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .picker-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
+  .picker-m { min-height:56px; border-radius:12px; border:1px solid var(--line); background:var(--surface-2); color:var(--text); font-size:15px; font-weight:600; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; cursor:pointer; text-transform:capitalize; }
+  .picker-m.today { border-color:var(--ok); }
+  .picker-m.sel { background:#2563eb; border-color:#2563eb; color:#fff; }
+  .picker-m .dot { width:6px; height:6px; border-radius:3px; background:transparent; }
+  .picker-m .dot.on { background:var(--ok); }
+  .picker-m.sel .dot.on { background:#fff; }
 </style>
 </head>
 <body>
@@ -539,7 +550,7 @@ const state = {
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
   hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1000,
-  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showForecast: false, settingsPage: null,
+  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showMonthPicker: false, pickerYear: null, showForecast: false, settingsPage: null,
   selected: new Set(),
   bulkDropOpen: false,
   dayDropOpen: false,
@@ -1141,7 +1152,8 @@ function render() {
   headerTop.appendChild(el("button", { class:"nav-btn", text:"‹", onclick: () => changeMonth(-1) }));
   const titleBox = el("div", { class:"month-title" });
   const monthView = state.view === "calendar" || state.view === "salary";
-  titleBox.appendChild(el("div", { class:"name", text: monthView ? MONTHS_RU[state.month] + " " + state.year : ({ alarm:"Будильник", stats:"Статистика" }[state.view] || "Настройки") }));
+  titleBox.appendChild(el("div", { class:"name", text: monthView ? MONTHS_RU[state.month] + " " + state.year + " ▾" : ({ alarm:"Будильник", stats:"Статистика" }[state.view] || "Настройки") }));
+  if (monthView) { titleBox.classList.add("tappable"); titleBox.addEventListener("click", () => { state.showMonthPicker = true; state.pickerYear = state.year; render(); }); }
   if (monthView) titleBox.appendChild(el("div", { class:"sub", id:"hdr-net", text: Math.round(netCalc.net).toLocaleString() + " ₪ нетто · " + stats.totalHours + " ч" }));
   headerTop.appendChild(titleBox);
   headerTop.appendChild(el("button", { class:"nav-btn", text:"›", onclick: () => changeMonth(1) }));
@@ -1601,7 +1613,7 @@ function render() {
       }
     }});
     misc.appendChild(resetBtn);
-    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 30" }));
+    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 31" }));
 
     // Настройки: список разделов → отдельная страница для каждого
     const cards = [...settingsWrap.children];
@@ -1667,7 +1679,7 @@ function render() {
       const hidden = el("div", { style:"display:none" });
       [find("Заполнить месяц из табеля"), find("Прочее")].forEach(c => { if (c) hidden.appendChild(c); });
       settingsWrap.appendChild(hidden);
-      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 30" }));
+      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 31" }));
     }
     app.appendChild(state.view === "salary" ? salaryWrap : settingsWrap);
   }
@@ -1698,6 +1710,7 @@ function render() {
   if (state.sheetDay) app.appendChild(renderDaySheet());
   if (state.showWizard) app.appendChild(renderWizard());
   if (state.showPlanner) app.appendChild(renderPlanner());
+  if (state.showMonthPicker) app.appendChild(renderMonthPicker());
 
   // ── BOTTOM BAR ──
   const bottomBar = el("nav", { class:"bottom-bar" });
@@ -2251,6 +2264,43 @@ function renderWizard() {
   ov.appendChild(m);
   return ov;
 }
+// Выбор любого месяца и года
+function renderMonthPicker() {
+  const ov = el("div", { class:"modal-overlay" });
+  const close = () => { state.showMonthPicker = false; render(); };
+  ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+  const m = el("div", { class:"modal" });
+  m.appendChild(el("div", { style:"width:40px;height:4px;background:#334155;border-radius:2px;margin:0 auto 12px" }));
+  const y = state.pickerYear || state.year;
+  const has = {};   // месяцы с данными
+  Object.keys(state.shifts).forEach(k => { has[k.slice(0, 7)] = true; });
+  Object.keys(state.netM || {}).forEach(k => { has[k] = true; });
+  const yr = el("div", { class:"picker-year" });
+  const prev = el("button", { class:"nav-btn", text:"‹" }); prev.addEventListener("click", () => { state.pickerYear = y - 1; render(); });
+  const next = el("button", { class:"nav-btn", text:"›" }); next.addEventListener("click", () => { state.pickerYear = y + 1; render(); });
+  yr.appendChild(prev); yr.appendChild(el("div", { class:"modal-title", style:"margin:0", text: String(y) })); yr.appendChild(next);
+  m.appendChild(yr);
+  const now = new Date();
+  const grid = el("div", { class:"picker-grid" });
+  MONTHS_RU.forEach((name, i) => {
+    const key = y + "-" + String(i + 1).padStart(2, "0");
+    const b = el("button", { class:"picker-m" + (y === state.year && i === state.month ? " sel" : "") + (y === now.getFullYear() && i === now.getMonth() ? " today" : "") });
+    b.appendChild(el("span", { text: name.slice(0, 3) }));
+    b.appendChild(el("i", { class: has[key] ? "dot on" : "dot" }));
+    b.addEventListener("click", () => { state.year = y; state.month = i; state.showMonthPicker = false; state.selected = new Set(); saveData(); render(); });
+    grid.appendChild(b);
+  });
+  m.appendChild(grid);
+  m.appendChild(el("div", { class:"hint", style:"text-align:center", text:"Точка — в месяце есть смены или листок" }));
+  const btns = el("div", { class:"sheet-btns" });
+  const today = el("button", { text:"Текущий месяц", style:"background:#2563eb;color:#fff" });
+  today.addEventListener("click", () => { state.year = now.getFullYear(); state.month = now.getMonth(); state.showMonthPicker = false; saveData(); render(); });
+  const cancel = el("button", { text:"Закрыть", style:"background:#334155;color:#94a3b8" }); cancel.addEventListener("click", close);
+  btns.appendChild(cancel); btns.appendChild(today);
+  m.appendChild(btns);
+  ov.appendChild(m);
+  return ov;
+}
 function openSheet(d) {
   state.sheetDay = d; state.sheetType = getShift(d).type; state.sheetTor = state.sheetType.indexOf("tor_") === 0; state.sheetNote = state.notes[key(d)] || ""; state.showBreakdown = false;
   render();
@@ -2379,7 +2429,7 @@ function changeMonth(dir, fromX) {
   const pager = () => document.getElementById("pager");
   document.addEventListener("touchstart", (e) => {
     const t = e.target;
-    if (sliding || (state.view !== "calendar" && state.view !== "salary") || e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || state.showPlanner ||
+    if (sliding || (state.view !== "calendar" && state.view !== "salary") || e.touches.length !== 1 || state.showAutoModal || state.sheetDay || state.showWizard || state.showPlanner || state.showMonthPicker ||
         (t.closest && (t.closest("input,textarea,select") || t.closest(".header") || !t.closest("#pager")))) { x0 = null; return; }
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); drag = false; dx = 0;
   }, { passive: true });
