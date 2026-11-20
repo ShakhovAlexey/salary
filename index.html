@@ -45,14 +45,14 @@
   .dropdown-item { padding:11px 16px; cursor:pointer; font-size:14px; border-bottom:1px solid #0f172a; display:flex; justify-content:space-between; align-items:center; color:#e2e8f0; }
   .dropdown-item:active { background:#334155; }
   .dropdown-item.selected { background:#1e3a8a; color:#fff; font-weight:700; }
-  .dropdown-item .hrs-badge { font-size:12px; color:#475569; background:#0f172a; border-radius:6px; padding:1px 7px; }
+  .dropdown-item .hrs-badge { font-size:12px; color:#8391a7; background:#0f172a; border-radius:6px; padding:1px 7px; }
 
   .day-headers { display:grid; grid-template-columns:repeat(7,1fr); padding:8px 6px 2px; }
-  .day-header { text-align:center; font-size:11px; color:#475569; font-weight:600; padding-bottom:4px; }
+  .day-header { text-align:center; font-size:11px; color:#8391a7; font-weight:600; padding-bottom:4px; }
 
   .cal-wrap { display:grid; grid-template-columns:18px repeat(7,1fr); gap:3px; padding:0 4px; }
   .cal-dh { text-align:center; font-size:11px; color:#64748b; font-weight:600; padding:6px 0 2px; }
-  .wk-no { font-size:10px; color:#475569; display:flex; align-items:center; justify-content:center; }
+  .wk-no { font-size:10px; color:#8391a7; display:flex; align-items:center; justify-content:center; }
   .cell2 { border-radius:8px; padding:3px 4px 4px; min-height:88px; cursor:pointer; overflow:hidden; color:#fff; position:relative; border:2px solid transparent; }
   .cell2 .top { display:flex; justify-content:space-between; align-items:center; }
   .cell2 .n { font-size:17px; font-weight:800; line-height:1.1; }
@@ -243,6 +243,29 @@
   .mt-row span:not(:first-child) { text-align:right; }
   .mt-h { color:var(--subtle); font-weight:700; }
   .nav-ico { width:48px; }
+
+  .set-list { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); overflow:hidden; }
+  .set-row { width:100%; display:flex; align-items:center; gap:14px; padding:12px 14px; min-height:60px; background:none; border:none; border-bottom:1px solid var(--line); color:var(--text); text-align:left; cursor:pointer; }
+  .set-row:last-child { border-bottom:none; }
+  .set-row:active { background:var(--surface-2); }
+  .set-ico { width:36px; height:36px; border-radius:10px; background:var(--surface-2); color:var(--accent); display:flex; align-items:center; justify-content:center; flex:none; }
+  .set-ico svg { width:20px; height:20px; }
+  .set-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .set-title { font-size:15px; font-weight:600; }
+  .set-val { font-size:13px; color:var(--subtle); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .set-chev { font-size:22px; color:var(--subtle); }
+  .set-row.danger .set-title { color:var(--bad); }
+  .set-row.danger .set-ico { color:var(--bad); background:#3b1520; }
+
+  /* переключатели в виде строки со свитчем */
+  .settings-card .toggle-btn, .settings-card .toggle-btn.on { background:var(--surface-2); color:var(--text); justify-content:space-between; text-align:left; font-weight:600; margin-top:12px; }
+  .settings-card .toggle-btn > span:first-child { flex:1; }
+  .toggle-pill { font-size:0 !important; width:46px; height:28px; border-radius:14px; background:#334155 !important; position:relative; flex:none; padding:0 !important; }
+  .toggle-pill::after { content:""; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:11px; background:#cbd5e1; transition:left .15s; }
+  .toggle-pill.on { background:#059669 !important; }
+  .toggle-pill.on::after { left:21px; background:#fff; }
+  .settings-card .field-label { margin-top:14px; }
+  .settings-card > .hint:first-child, .settings-card > div:first-child { margin-top:0; }
 </style>
 </head>
 <body>
@@ -516,7 +539,7 @@ const state = {
   maxHours: saved.maxHours || 240,
   hoursBonusOn: saved.hoursBonusOn !== undefined ? saved.hoursBonusOn : true,
   hb1: saved.hb1 !== undefined ? saved.hb1 : 500, hb2: saved.hb2 !== undefined ? saved.hb2 : 1000,
-  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showForecast: false,
+  showWizard: !localStorage.getItem(STORAGE_KEY), wizStep: 0, showPlanner: false, plannerResult: null, showForecast: false, settingsPage: null,
   selected: new Set(),
   bulkDropOpen: false,
   dayDropOpen: false,
@@ -1090,6 +1113,16 @@ const ICONS = {
   money: svg('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/>'),
   alarm: svg('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 2M4.5 4.5 2.5 6.5M19.5 4.5l2 2"/>'),
   chart: svg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+  file: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v6M9 15l3 3 3-3"/>'),
+  save: svg('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>'),
+  coin: svg('<circle cx="12" cy="12" r="8.5"/><path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.6 0-2.7.8-2.7 2s1.1 1.7 2.7 2c1.6.3 2.7.8 2.7 2s-1.1 2-2.7 2c-1.1 0-2-.4-2.5-1.2M12 6.5v11"/>'),
+  doc: svg('<path d="M8 3h8l3 3v15H5V3z"/><path d="M9 9h6M9 13h6M9 17h4"/>'),
+  clock: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  bolt: svg('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
+  target: svg('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>'),
+  trend: svg('<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>'),
+  compass: svg('<circle cx="12" cy="12" r="8.5"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>'),
+  trash: svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')
 };
 // ───────────────────────── MAIN RENDER ─────────────────────────
@@ -1113,6 +1146,12 @@ function render() {
   headerTop.appendChild(titleBox);
   headerTop.appendChild(el("button", { class:"nav-btn", text:"›", onclick: () => changeMonth(1) }));
   if (!monthView) [...headerTop.querySelectorAll(".nav-btn")].forEach(b => b.style.visibility = "hidden");
+  if (state.view === "settings" && state.settingsPage) {
+    const back = headerTop.querySelector(".nav-btn");
+    back.style.visibility = "visible"; back.onclick = (e) => { e.stopPropagation(); state.settingsPage = null; render(); window.scrollTo(0, 0); };
+    const PT = { backup:"Резервная копия", rate:"Ставка в час", tax:"Налоги и пенсия", hours:"Часы, бонус и праздники", tor:"Надбавка торануты", goal:"Цель на месяц", forecast:"Прогноз «если 240 ч»", taxyear:"Годовой прогноз налога" };
+    titleBox.querySelector(".name").textContent = PT[state.settingsPage] || "Настройки";
+  }
   header.appendChild(headerTop);
 
   if (state.view === "calendar") {
@@ -1325,7 +1364,7 @@ function render() {
     ht.appendChild(el("span", { class:"toggle-pill" + (state.holidaysOn ? " on" : ""), text: state.holidaysOn ? "ВКЛ" : "ВЫКЛ" }));
     ht.addEventListener("click", () => { state.holidaysOn = !state.holidaysOn; saveData(); render(); });
     extra.appendChild(ht);
-    extra.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Встроены праздники 2023–2030. С 17:00 кануна до 17:00 праздника — как шабат. Любой день можно отметить или снять в окне дня." }));
+    extra.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-top:4px", text:"Встроены праздники 2023–2030. С 17:00 кануна до 17:00 праздника — как шабат. Любой день можно отметить или снять в окне дня." }));
     wrap.appendChild(extra);
 
     const plan = el("div", { class:"settings-card" });
@@ -1352,18 +1391,18 @@ function render() {
     const yr = computeYear();
     const annual = el("div", { class:"settings-card" });
     annual.appendChild(el("div", { class:"title", text:"📆 Годовой прогноз налога" }));
-    annual.appendChild(el("div", { id:"yr-note", style:"font-size:11px;color:#475569;margin-bottom:8px", text:"По введённым месяцам года: " + yr.months + ". Премия и разовые выплаты — по каждому месяцу." }));
+    annual.appendChild(el("div", { id:"yr-note", style:"font-size:11px;color:#8391a7;margin-bottom:8px", text:"По введённым месяцам года: " + yr.months + ". Премия и разовые выплаты — по каждому месяцу." }));
     const yrRow = (lab, id, val) => { const r = el("div", { class:"net-row" }); r.appendChild(el("span", { text: lab, style:"color:#94a3b8" })); r.appendChild(el("span", { id: id, text: val, style:"color:#e2e8f0;font-weight:600" })); return r; };
     annual.appendChild(yrRow("Доход за год (брутто)", "yr-gross", Math.round(yr.T).toLocaleString() + " ₪"));
     annual.appendChild(yrRow("Налог по годовым ступеням", "yr-tax", Math.round(yr.tax).toLocaleString() + " ₪"));
     annual.appendChild(yrRow("Сумма месячных расчётов", "yr-monthly", Math.round(yr.monthlySum).toLocaleString() + " ₪"));
-    annual.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:6px", text:"Разница показывает возможную доплату или возврат по итогам года. Учитывайте, что оценка приблизительная." }));
+    annual.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-top:6px", text:"Разница показывает возможную доплату или возврат по итогам года. Учитывайте, что оценка приблизительная." }));
     wrap.appendChild(annual);
 
     // Tax settings
     const taxSettings = el("div", { class:"settings-card" });
-    taxSettings.appendChild(el("div", { class:"title", text:"⚙️ Параметры расчёта налогов" }));
-    taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:10px", text:"Баллы, скидку и пенсию берите из своего расчётного листка (раздел «нисуй мас» / «некудот зикуй»)." }));
+    taxSettings.appendChild(el("div", { class:"title", text:"Параметры расчёта налогов" }));
+    taxSettings.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-bottom:10px", text:"Баллы, скидку и пенсию берите из своего расчётного листка (раздел «нисуй мас» / «некудот зикуй»)." }));
     const numField = (label, value, step, onInput, id) => {
       taxSettings.appendChild(el("div", { class:"field-label", text: label }));
       const inp = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: value, id: id || "" });
@@ -1372,9 +1411,9 @@ function render() {
       taxSettings.appendChild(inp);
     };
     numField("Зкифот (זקיפות: страховка, питание), ₪/мес", state.zkifot, 1, (v) => { state.zkifot = v; });
-    taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px;margin-bottom:12px", text:"Строка «סה״כ זקיפות שכר» в листке. На руки не выплачивается, но с неё берут налог и Битуах Леуми." }));
+    taxSettings.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-top:4px;margin-bottom:12px", text:"Строка «סה״כ זקיפות שכר» в листке. На руки не выплачивается, но с неё берут налог и Битуах Леуми." }));
     numField("Налоговые баллы (некудот зикуй)", state.creditPoints, 0.25, (v) => { state.creditPoints = v; }, "cp-input");
-    taxSettings.appendChild(el("div", { id:"cp-shield-label", text:"= " + Math.round(state.creditPoints*POINT_VALUE_2026).toLocaleString() + " ₪ налогового щита/мес", style:"font-size:11px;color:#475569;margin-top:4px;margin-bottom:12px" }));
+    taxSettings.appendChild(el("div", { id:"cp-shield-label", text:"= " + Math.round(state.creditPoints*POINT_VALUE_2026).toLocaleString() + " ₪ налогового щита/мес", style:"font-size:11px;color:#8391a7;margin-top:4px;margin-bottom:12px" }));
 
     const pensionToggle = el("button", { class:"toggle-btn" + (state.includePension?" on":"") });
     pensionToggle.appendChild(el("span", { text:"Вычитать пенсию + керен иштальмут" }));
@@ -1389,7 +1428,7 @@ function render() {
       pcToggle.appendChild(el("span", { class:"toggle-pill" + (state.pensionCreditOn?" on":""), text: state.pensionCreditOn?"ВКЛ":"ВЫКЛ" }));
       pcToggle.addEventListener("click", () => { state.pensionCreditOn = !state.pensionCreditOn; saveData(); render(); });
       taxSettings.appendChild(pcToggle);
-      taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Приблизительно: верхние пределы зачёта не учитываются." }));
+      taxSettings.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-top:4px", text:"Приблизительно: верхние пределы зачёта не учитываются." }));
     }
 
     // Residency benefit
@@ -1406,16 +1445,16 @@ function render() {
       taxSettings.appendChild(preset);
       taxSettings.appendChild(el("div", {
         text: "Щит некудот: " + Math.round(netCalc.pointsShield) + "₪ + скидка: " + Math.round(netCalc.nofShield) + "₪ = итого " + Math.round(netCalc.pointsShield + netCalc.nofShield) + "₪",
-        style:"font-size:11px;color:#475569;margin-top:6px"
+        style:"font-size:11px;color:#8391a7;margin-top:6px"
       }));
-      taxSettings.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:4px", text:"Для другого города возьмите процент и потолок из списка на сайте налоговой." }));
+      taxSettings.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-top:4px", text:"Для другого города возьмите процент и потолок из списка на сайте налоговой." }));
     }
     wrap.appendChild(taxSettings);
 
     // Torranuta surcharge %
     const torCard = el("div", { class:"settings-card" });
     torCard.appendChild(el("div", { class:"title", text:"⚡ Надбавка торрануты (8ч × ставка)" }));
-    torCard.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:6px", text:"Авто: утро 50%, вечер 58.8%, ночь 70%, шабат 117.5%" }));
+    torCard.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-bottom:6px", text:"Авто: утро 50%, вечер 58.8%, ночь 70%, шабат 117.5%" }));
     const torRow = el("div", { style:"display:flex;gap:6px;flex-wrap:wrap" });
     const optAuto = el("button", { class:"toggle-btn" + (state.torAuto?" on":""), style:"flex:1;justify-content:center", text:"Авто" });
     optAuto.addEventListener("click", function () { state.torAuto = true; saveData(); render(); });
@@ -1431,7 +1470,7 @@ function render() {
 
     // Rate settings
     const rateSettings = el("div", { class:"settings-card" });
-    rateSettings.appendChild(el("div", { class:"title", text:"⚙️ Часовая ставка" }));
+    rateSettings.appendChild(el("div", { class:"title", text:"Часовая ставка" }));
     const rateRow = el("div", { style:"display:flex;gap:8px;align-items:center" });
     const rateInput = el("input", { type:"text", inputmode:"decimal", class:"num-input", value: state.hourlyRate, style:"flex:1" });
     caretToEnd(rateInput);
@@ -1448,10 +1487,10 @@ function render() {
     // Backup: save / load data file
     const backup = el("div", { class:"settings-card" });
     backup.appendChild(el("div", { class:"title", text:"💾 Резервная копия / перенос на другой телефон" }));
-    backup.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:10px", text:"Сохрани файл на старом телефоне, перешли себе (WhatsApp, Telegram, почта) и загрузи на новом. Там же — смены, премии и все настройки." }));
+    backup.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-bottom:10px", text:"Сохрани файл на старом телефоне, перешли себе (WhatsApp, Telegram, почта) и загрузи на новом. Там же — смены, премии и все настройки." }));
     const backupName = () => "salary-backup-" + new Date().toISOString().slice(0,10) + ".txt";
     const backupJson = () => { saveData(); return localStorage.getItem(STORAGE_KEY) || "{}"; };
-    const saveBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"⬇️ Сохранить данные в файл" });
+    const saveBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"Сохранить данные в файл" });
     saveBtn.addEventListener("click", () => {
       if (IN_APP) { window.Android.saveFile(backupName(), backupJson()); return; }
       const blob = new Blob([backupJson()], { type:"text/plain" });
@@ -1462,13 +1501,13 @@ function render() {
     });
     backup.appendChild(saveBtn);
     if (IN_APP) {
-      const sh = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📤 Отправить данные (WhatsApp, Telegram…)" });
+      const sh = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"Отправить данные (WhatsApp, Telegram…)" });
       sh.addEventListener("click", () => window.Android.shareText("Калькулятор зарплаты — данные", backupJson()));
       backup.appendChild(sh);
     }
     try {
       if (navigator.share && !IN_APP) {
-        const shareBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📤 Отправить файл (WhatsApp, Telegram…)" });
+        const shareBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"Отправить файл (WhatsApp, Telegram…)" });
         shareBtn.addEventListener("click", () => {
           const f = new File([backupJson()], backupName(), { type:"text/plain" });
           const fallback = () => saveBtn.click();
@@ -1507,13 +1546,13 @@ function render() {
       fileInp.value = "";
     });
     backup.appendChild(fileInp);
-    const loadBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"⬆️ Загрузить данные из файла" });
+    const loadBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"Загрузить данные из файла" });
     loadBtn.addEventListener("click", () => fileInp.click());
     backup.appendChild(loadBtn);
 
     // Самый надёжный способ: скопировать данные текстом и вставить на другом телефоне
-    backup.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:12px 0 6px", text:"Если файлы не отправляются — перенеси текстом: «Скопировать», вставь в Telegram/WhatsApp себе, на новом телефоне скопируй это сообщение и нажми «Вставить»." }));
-    const copyBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"📋 Скопировать данные" });
+    backup.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin:12px 0 6px", text:"Если файлы не отправляются — перенеси текстом: «Скопировать», вставь в Telegram/WhatsApp себе, на новом телефоне скопируй это сообщение и нажми «Вставить»." }));
+    const copyBtn = el("button", { class:"toggle-btn", style:"justify-content:center", text:"Скопировать данные" });
     copyBtn.addEventListener("click", () => {
       const txt = backupJson();
       const ok = () => { copyBtn.textContent = "✅ Скопировано — вставь в сообщение"; setTimeout(() => copyBtn.textContent = "📋 Скопировать данные", 4000); };
@@ -1526,10 +1565,10 @@ function render() {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, legacy); else legacy();
     });
     backup.appendChild(copyBtn);
-    const pasteBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"📥 Вставить данные" });
+    const pasteBtn = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:8px", text:"Вставить данные" });
     const pasteBox = el("div", { style:"display:none;margin-top:8px" });
     const pasteTa = el("textarea", { class:"num-input", placeholder:"Нажми и удерживай здесь → Вставить", style:"width:100%;height:90px;box-sizing:border-box;font-size:12px" });
-    const pasteGo = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:6px", text:"✔️ Загрузить вставленные данные" });
+    const pasteGo = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:6px", text:"Загрузить вставленные данные" });
     const importText = (txt) => {
       let d; const t = String(txt || "").trim(); const i = t.indexOf("{"), j = t.lastIndexOf("}");
       try { d = JSON.parse(t.slice(i, j + 1)); } catch (e) { alert("Это не данные калькулятора. Скопируй сообщение целиком."); return; }
@@ -1562,28 +1601,74 @@ function render() {
       }
     }});
     misc.appendChild(resetBtn);
-    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 29" }));
+    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 30" }));
 
-    // Настройки: раскладываем карточки по разделам
-    const groups = [["Данные", ["Заполнить месяц из табеля", "Резервная копия"]],
-                    ["Расчёт зарплаты", ["Часовая ставка", "Параметры расчёта налогов", "Часы, бонус", "торран"]],
-                    ["Планы и статистика", ["Цель на месяц", "Если работать", "Статистика за", "Годовой прогноз"]],
-                    ["", ["Прочее"]]];
+    // Настройки: список разделов → отдельная страница для каждого
     const cards = [...settingsWrap.children];
     const titleOf = (c) => { const t = c.querySelector(".title"); return t ? t.textContent : ""; };
-    const used = new Set();
-    settingsWrap.innerHTML = "";
-    groups.forEach(([name, keys]) => {
-      const list = [];
-      keys.forEach(k => cards.forEach(c => { if (!used.has(c) && list.indexOf(c) < 0 && titleOf(c).toLowerCase().indexOf(k.toLowerCase()) >= 0) list.push(c); }));
-      if (!list.length) return;
-      if (name) settingsWrap.appendChild(el("div", { class:"section-h", text: name }));
-      list.forEach(c => { used.add(c); settingsWrap.appendChild(c); });
-    });
-    cards.filter(c => !used.has(c)).forEach(c => settingsWrap.appendChild(c));
+    const find = (k) => cards.find(c => titleOf(c).toLowerCase().indexOf(k.toLowerCase()) >= 0);
     const clean = (t) => t.replace(/^[^0-9A-Za-zА-Яа-яЁё]+/, "");
     [settingsWrap, salaryWrap].forEach(w => w.querySelectorAll(".settings-card > .title").forEach(t => {
       const first = t.firstElementChild; if (first) first.textContent = clean(first.textContent); else t.textContent = clean(t.textContent); }));
+    const PAGES = {
+      backup:   ["Резервная копия", "Резервная копия"],
+      rate:     ["Ставка в час", "Часовая ставка"],
+      tax:      ["Налоги и пенсия", "Параметры расчёта налогов"],
+      hours:    ["Часы, бонус и праздники", "Часы, бонус"],
+      tor:      ["Надбавка торануты", "торран"],
+      goal:     ["Цель на месяц", "Цель на месяц"],
+      forecast: ["Прогноз «если 240 ч»", "Если работать"],
+      taxyear:  ["Годовой прогноз налога", "Годовой прогноз"]
+    };
+    settingsWrap.innerHTML = "";
+    const pg = state.settingsPage;
+    if (pg && PAGES[pg]) {
+      const c = find(PAGES[pg][1]);
+      if (c) { const t = c.querySelector(".title"); if (t && pg !== "forecast") t.remove(); settingsWrap.appendChild(c); }
+    } else {
+      const fmt0 = (v) => Math.round(v).toLocaleString("ru-RU");
+      const sections = [
+        ["Данные", [
+          ["import", "Загрузить табели (PDF)", "Смены месяца из табеля", ICONS.file],
+          ["backup", "Резервная копия", "Сохранить или перенести данные", ICONS.save]]],
+        ["Расчёт зарплаты", [
+          ["rate", "Ставка в час", state.hourlyRate + " ₪/ч", ICONS.coin],
+          ["tax", "Налоги и пенсия", state.creditPoints + " балла" + (state.nofHagalil ? " · скидка " + state.benefitPct + "%" : "") + (state.includePension ? " · пенсия " + state.pensionPct + "%" : ""), ICONS.doc],
+          ["hours", "Часы, бонус и праздники", "лимит " + (state.maxHours || 240) + " ч · бонус " + (state.hoursBonusOn === false ? "выкл" : state.hb1 + "/" + state.hb2 + " ₪"), ICONS.clock],
+          ["tor", "Надбавка торануты", state.torAuto === false ? state.torPct + "%" : "автоматически", ICONS.bolt]]],
+        ["Планы", [
+          ["goal", "Цель на месяц", state.goalNet > 0 ? fmt0(state.goalNet) + " ₪ нетто" : "не задана", ICONS.target],
+          ["forecast", "Прогноз «если 240 ч»", "12 месяцев вперёд", ICONS.trend],
+          ["taxyear", "Годовой прогноз налога", "по введённым месяцам", ICONS.doc]]],
+        ["Прочее", [
+          ["wizard", "Мастер настройки", "ставка, баллы, город, пенсия", ICONS.compass],
+          ["reset", "Сбросить все данные", "удалить смены и настройки", ICONS.trash]]]
+      ];
+      sections.forEach(([name, rows]) => {
+        settingsWrap.appendChild(el("div", { class:"section-h", text: name }));
+        const list = el("div", { class:"set-list" });
+        rows.forEach(([key, title, value, icon]) => {
+          const row = el("button", { class:"set-row" + (key === "reset" ? " danger" : "") });
+          const ic = el("span", { class:"set-ico" }); ic.innerHTML = icon; row.appendChild(ic);
+          const tx = el("span", { class:"set-text" }); tx.appendChild(el("span", { class:"set-title", text: title })); tx.appendChild(el("span", { class:"set-val", text: value })); row.appendChild(tx);
+          if (key !== "reset") row.appendChild(el("span", { class:"set-chev", text:"›" }));
+          row.addEventListener("click", () => {
+            if (key === "import") { const c = find("Заполнить месяц из табеля"); const inp = c && c.querySelector("input[type=file]"); if (inp) inp.click(); return; }
+            if (key === "wizard") { state.showWizard = true; state.wizStep = 0; render(); return; }
+            if (key === "reset") { const c = find("Прочее"); const b = c && c.querySelector(".reset-btn"); if (b) b.click(); return; }
+            if (key === "forecast") state.showForecast = true;
+            state.settingsPage = key; render(); window.scrollTo(0, 0);
+          });
+          list.appendChild(row);
+        });
+        settingsWrap.appendChild(list);
+      });
+      // скрытые карточки нужны для кнопок «Загрузить табели» и «Сбросить»
+      const hidden = el("div", { style:"display:none" });
+      [find("Заполнить месяц из табеля"), find("Прочее")].forEach(c => { if (c) hidden.appendChild(c); });
+      settingsWrap.appendChild(hidden);
+      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 30" }));
+    }
     app.appendChild(state.view === "salary" ? salaryWrap : settingsWrap);
   }
 
@@ -1620,7 +1705,7 @@ function render() {
     const b = el("button", { class:"nav-item" + (state.view === v ? " active" : ""), "aria-label": lab });
     const ico = el("span", { class:"nav-ico" }); ico.innerHTML = ic;
     b.appendChild(ico); b.appendChild(el("span", { class:"nav-lab", text: lab }));
-    b.addEventListener("click", () => { if (state.view === v) return; state.view = v; state.multiMode = false; saveData(); render(); window.scrollTo(0, 0); });
+    b.addEventListener("click", () => { if (state.view === v) { if (v === "settings" && state.settingsPage) { state.settingsPage = null; render(); } return; } state.view = v; state.settingsPage = null; state.multiMode = false; saveData(); render(); window.scrollTo(0, 0); });
     bottomBar.appendChild(b);
   });
   app.appendChild(bottomBar);
@@ -1840,7 +1925,7 @@ function renderForecast() {
   card.appendChild(head);
   if (!state.showForecast) return card;
   const rows = forecastMax(12);
-  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:8px 0", text:"12 месяцев вперёд. Твой график + доп. часы до " + cap + " ч (правило 7 дней подряд, самые выгодные часы). Месяцы без смен достроены по циклу графика (≈). Премия — как задана для месяца." }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin:8px 0", text:"12 месяцев вперёд. Твой график + доп. часы до " + cap + " ч (правило 7 дней подряд, самые выгодные часы). Месяцы без смен достроены по циклу графика (≈). Премия — как задана для месяца." }));
   const t = el("div", { style:"font-size:12px" });
   const hdr = el("div", { style:"display:grid;grid-template-columns:1.2fr 1fr 1fr .8fr;gap:4px;color:#64748b;padding:4px 0;border-bottom:1px solid #334155" });
   ["Месяц","По графику","До " + cap + " ч","Разница"].forEach(x => hdr.appendChild(el("div", { text:x, style: x==="Месяц" ? "" : "text-align:right" })));
@@ -1865,7 +1950,7 @@ function renderForecast() {
   tot.appendChild(el("div", { text: "+" + Math.round(sm - sb).toLocaleString(), style:"text-align:right;color:#a7f3d0" }));
   t.appendChild(tot);
   card.appendChild(t);
-  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:8px", text:"Нажми на месяц — откроется календарь, там кнопка 🧠 покажет конкретные дни." }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-top:8px", text:"Нажми на месяц — откроется календарь, там кнопка 🧠 покажет конкретные дни." }));
   return card;
 }
 // ── Загрузка табеля (PDF «rper6») → смены месяца ──
@@ -1944,11 +2029,11 @@ async function importTimesheetFile(files) {
 }
 function renderTimesheetCard() {
   const card = el("div", { class:"settings-card" });
-  card.appendChild(el("div", { class:"title", text:"📄 Заполнить месяц из табеля" }));
-  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-bottom:8px", text:"Выбери один или сразу несколько PDF табелей (rper6…). Месяц определяется сам по датам в файле. Смены, торануты (работа в выходной по графику) и дни отпуска проставятся сами. Премию и бонусы впиши из листка." }));
+  card.appendChild(el("div", { class:"title", text:"Заполнить месяц из табеля" }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-bottom:8px", text:"Выбери один или сразу несколько PDF табелей (rper6…). Месяц определяется сам по датам в файле. Смены, торануты (работа в выходной по графику) и дни отпуска проставятся сами. Премию и бонусы впиши из листка." }));
   const inp = el("input", { type:"file", accept:"application/pdf,.pdf", multiple:"multiple", style:"display:none" });
   inp.addEventListener("change", () => { const fs = inp.files ? [...inp.files] : []; if (fs.length) importTimesheetFile(fs); inp.value = ""; });
-  const b = el("button", { class:"toggle-btn", style:"justify-content:center", text:"📄 Выбрать табели PDF (можно несколько)" });
+  const b = el("button", { class:"toggle-btn", style:"justify-content:center", text:"Выбрать табели PDF (можно несколько)" });
   b.addEventListener("click", () => inp.click());
   card.appendChild(inp); card.appendChild(b);
   return card;
@@ -1997,7 +2082,7 @@ function renderAppAlarmCard() {
   tg.appendChild(el("span", { class:"toggle-pill" + (on ? " on" : ""), text: on ? "ВКЛ" : "ВЫКЛ" }));
   tg.addEventListener("click", () => { state.alarmsOn = !on; saveData(); render(); });
   card.appendChild(tg);
-  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:8px 0", text:"Время подъёма для каждой смены. Будильники ставятся сами на 60 дней вперёд и обновляются, когда меняешь график." }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin:8px 0", text:"Время подъёма для каждой смены. Будильники ставятся сами на 60 дней вперёд и обновляются, когда меняешь график." }));
   const grid = el("div", { style:"display:grid;grid-template-columns:1fr 1fr;gap:8px" });
   Object.keys(ALARM_DEFAULT).forEach(k => {
     const box = el("div");
@@ -2009,7 +2094,7 @@ function renderAppAlarmCard() {
   card.appendChild(grid);
   let cnt = 0; try { cnt = window.Android.scheduledCount(); } catch (e) {}
   card.appendChild(el("div", { style:"font-size:12px;color:#94a3b8;margin-top:10px", text:"Сейчас поставлено будильников: " + cnt }));
-  const test = el("button", { class:"toggle-btn", style:"margin-top:8px;justify-content:center", text:"🔔 Проверить: прозвонить через 1 минуту" });
+  const test = el("button", { class:"toggle-btn", style:"margin-top:8px;justify-content:center", text:"Проверить: прозвонить через 1 минуту" });
   test.addEventListener("click", () => window.Android.testAlarm());
   card.appendChild(test);
   let ps = {}; try { ps = JSON.parse(window.Android.permState()); } catch (e) {}
@@ -2017,7 +2102,7 @@ function renderAppAlarmCard() {
   const perm = el("button", { class:"toggle-btn", style:"margin-top:8px;justify-content:center" + (warn ? ";background:#7c2d12" : ""), text: warn ? "⚠️ Дать разрешения для будильника" : "⚙️ Настройки приложения (Xiaomi)" });
   perm.addEventListener("click", () => window.Android.openAppSettings());
   card.appendChild(perm);
-  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin-top:6px", text:"На Xiaomi включи: Автозапуск; Экран блокировки; Всплывающие окна в фоне; Контроль активности → Нет ограничений." }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-top:6px", text:"На Xiaomi включи: Автозапуск; Экран блокировки; Всплывающие окна в фоне; Контроль активности → Нет ограничений." }));
   return card;
 }
 function renderPayslipCard(netCalc) {
@@ -2032,7 +2117,7 @@ function renderPayslipCard(netCalc) {
   if (pn !== undefined) card.appendChild(el("div", { style:"font-size:12px;margin-top:6px;color:" + (Math.abs(netCalc.net - pn) < 50 ? "#34d399" : "#fbbf24"),
     text:"Сверка: приложение " + Math.round(netCalc.net).toLocaleString() + " ₪ · листок " + Math.round(pn).toLocaleString() + " ₪ · разница " + (Math.round(netCalc.net - pn) === 0 ? "0" : Math.round(netCalc.net - pn).toLocaleString()) + " ₪" }));
   if (!open) return card;
-  card.appendChild(el("div", { style:"font-size:11px;color:#475569;margin:8px 0", text:"Только для этого месяца. Пустое поле — считается по общим правилам." }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin:8px 0", text:"Только для этого месяца. Пустое поле — считается по общим правилам." }));
   [["Ставка, ₪/ч (שכר שעה)", "ratesM"], ["Бонус за часы, код 167", "hbM"], ["За приведённого работника, код 167", "refM"], ["Дмей хавраа, код 160", "recupM"], ["Зкифот (סה״כ זקיפות)", "zkifotM"],
    ["Подоходный налог по листку (מס הכנסה)", "taxM"], ["Нетто по листку — для сверки", "netM"]].forEach(([lab, f]) => {
     card.appendChild(el("div", { class:"field-label", style:"margin-top:8px", text: lab }));
@@ -2126,7 +2211,7 @@ function renderWizard() {
     m.appendChild(el("div", { class:"modal-title", text:"👋 Привет! Почасовая ставка" }));
     m.appendChild(el("div", { class:"modal-sub", text:"Сколько ₪ в час по договору (строка «שכר שעה» в листке)." }));
     m.appendChild(inp(state.hourlyRate, v => { state.hourlyRate = v; }));
-    const rb = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center;background:#0f172a;border:1px solid #334155", text:"📥 Переношу с другого телефона — загрузить копию" });
+    const rb = el("button", { class:"toggle-btn", style:"margin-top:12px;justify-content:center;background:#0f172a;border:1px solid #334155", text:"Переношу с другого телефона — загрузить копию" });
     rb.addEventListener("click", () => {
       state.showWizard = false; state.view = "settings"; render();
       setTimeout(() => { const c = [...document.querySelectorAll(".settings-card .title")].find(x => x.textContent.indexOf("Резервная копия") >= 0); if (c) c.scrollIntoView({ behavior:"smooth", block:"start" }); }, 50);
