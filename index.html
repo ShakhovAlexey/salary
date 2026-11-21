@@ -2555,10 +2555,57 @@ function changeMonth(dir, fromX) {
   }, { passive: true });
 })();
 
+// ── Импорт смен из приложения «Шаги» (по геолокации «Работа») ──
+// Тип смены — по времени прихода, как в табеле: утро ~06:00, день 12ч ~09:30, день ~14:00, ночь ~22:00.
+// Часы целые; 11+ ч — двенадцатичасовая смена. Торанут «Шаги» не знают — если день уже был торанутом, он сохраняется.
+function stepsShiftType(e, h) {
+  if (e >= 4.5 && e < 7) return h >= 11 ? "morning12" : "morning";
+  if (e >= 8.5 && e < 11.5) return "day12";
+  if (e >= 11.5 && e < 16) return h >= 11 ? "day12" : "day";
+  if (e >= 16 && e < 20) return "night12";
+  if (e >= 20 && e < 23.5) return h >= 11 ? "night12" : "night8";
+  return null;
+}
+function importFromSteps() {
+  const m = (location.hash || "").match(/^#import=(.+)$/);
+  if (!m) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  let data;
+  try { data = JSON.parse(decodeURIComponent(m[1])); } catch (e) { alert("Не удалось прочитать данные из «Шагов»."); return; }
+  if (!data || data.source !== "steps" || !Array.isArray(data.sessions)) return;
+  const res = {}, hrs = {}, unknown = [];
+  data.sessions.forEach(function (s) {
+    const p = String(s.start || "").split(":").map(Number);
+    if (p.length < 2 || isNaN(p[0])) { unknown.push(s.date); return; }
+    const t = stepsShiftType(p[0] + p[1] / 60, Number(s.hours) || 0);
+    if (!t) { unknown.push(s.date + " (" + s.start + ")"); return; }
+    const prev = state.shifts[s.date];
+    res[s.date] = (prev && prev.type && prev.type.indexOf("tor_") === 0) ? "tor_" + t : t;
+    hrs[s.date] = s.hours;
+  });
+  const keys = Object.keys(res).sort();
+  if (!keys.length) { alert("В данных из «Шагов» нет смен." + (unknown.length ? "\nНе распознаны: " + unknown.join(", ") : "")); return; }
+  const changed = keys.filter(function (k) { return !state.shifts[k] || state.shifts[k].type !== res[k]; });
+  const lines = keys.map(function (k) {
+    return k.slice(8) + "." + k.slice(5, 7) + " — " + shiftLabel(res[k]) + " (" + hrs[k] + " ч)" + (changed.indexOf(k) >= 0 ? "  ← новое" : "");
+  });
+  const msg = "Смены из «Шагов» (по геолокации):\n" + lines.join("\n") +
+    (unknown.length ? "\n\nНе распознаны: " + unknown.join(", ") : "") +
+    "\n\nИзменится дней: " + changed.length + ". Записать в календарь?";
+  if (!changed.length) { alert("Все смены из «Шагов» уже стоят в календаре."); return; }
+  if (!confirm(msg)) return;
+  keys.forEach(function (k) { state.shifts[k] = { type: res[k] }; });
+  const f = keys[keys.length - 1];
+  state.year = +f.slice(0, 4); state.month = +f.slice(5, 7) - 1; state.view = "calendar";
+  saveData(); render();
+}
+window.addEventListener("hashchange", function () { setTimeout(importFromSteps, 100); });
+
 if (state.view === "summary") state.view = "salary";
 migratePremiums();
 render();
 if (IN_APP) setTimeout(syncApp, 500);
+setTimeout(importFromSteps, 300);
 </script>
 
 <!-- PWA Service Worker -->
