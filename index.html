@@ -1715,7 +1715,7 @@ function render() {
       }
     }});
     misc.appendChild(resetBtn);
-    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 36" }));
+    misc.appendChild(el("div", { class:"hint", style:"text-align:center", text:"версия приложения: 37" }));
 
     // Настройки: список разделов → отдельная страница для каждого
     const cards = [...settingsWrap.children];
@@ -1743,7 +1743,7 @@ function render() {
       const fmt0 = (v) => Math.round(v).toLocaleString("ru-RU");
       const sections = [
         ["Данные", [
-          ["import", "Загрузить табели (PDF)", "Смены месяца из табеля", ICONS.file],
+          ["import", "Загрузить табели и листки (PDF)", "Смены из табеля, цифры из листка зарплаты", ICONS.file],
           ["stepsOut", "График → «Шаги»", "чтобы «Шаги» знали смены", ICONS.clock],
           ["steps", "Расхождения из «Шагов»", "факт по геолокации завода", ICONS.clock],
           ["backup", "Резервная копия", "Сохранить или перенести данные", ICONS.save]]],
@@ -1771,7 +1771,7 @@ function render() {
           row.addEventListener("click", () => {
             if (key === "steps") { pasteFromSteps(); return; }
             if (key === "stepsOut") { sendScheduleToSteps(); return; }
-            if (key === "import") { const c = find("Заполнить месяц из табеля"); const inp = c && c.querySelector("input[type=file]"); if (inp) inp.click(); return; }
+            if (key === "import") { const c = find("Загрузить табели и листки PDF"); const inp = c && c.querySelector("input[type=file]"); if (inp) inp.click(); return; }
             if (key === "wizard") { state.showWizard = true; state.wizStep = 0; render(); return; }
             if (key === "reset") { const c = find("Прочее"); const b = c && c.querySelector(".reset-btn"); if (b) b.click(); return; }
             if (key === "forecast") state.showForecast = true;
@@ -1783,9 +1783,9 @@ function render() {
       });
       // скрытые карточки нужны для кнопок «Загрузить табели» и «Сбросить»
       const hidden = el("div", { style:"display:none" });
-      [find("Заполнить месяц из табеля"), find("Прочее")].forEach(c => { if (c) hidden.appendChild(c); });
+      [find("Загрузить табели и листки PDF"), find("Прочее")].forEach(c => { if (c) hidden.appendChild(c); });
       settingsWrap.appendChild(hidden);
-      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 36" }));
+      settingsWrap.appendChild(el("div", { class:"hint", style:"text-align:center;margin-top:16px", text:"версия приложения: 37" }));
     }
     app.appendChild(state.view === "salary" ? salaryWrap : settingsWrap);
   }
@@ -2083,17 +2083,77 @@ function loadPdfJs() {
     document.head.appendChild(sc);
   });
 }
-async function pdfLines(buf) {
+// Строки PDF с координатами: [{ it: [[x, текст], ...] }] сверху вниз, внутри строки слева направо
+async function pdfRows(buf) {
   const lib = await loadPdfJs();
   const doc = await lib.getDocument({ data: buf }).promise;
-  const lines = [];
+  const out = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const tc = await (await doc.getPage(p)).getTextContent();
     const rows = {};
     tc.items.forEach(it => { const y = Math.round(it.transform[5]); (rows[y] = rows[y] || []).push([it.transform[4], it.str]); });
-    Object.keys(rows).sort((a, b) => b - a).forEach(y => lines.push(rows[y].sort((a, b) => a[0] - b[0]).map(x => x[1]).join(" | ")));
+    Object.keys(rows).sort((a, b) => b - a).forEach(y => out.push({ page: p, it: rows[y].sort((a, b) => a[0] - b[0]) }));
   }
-  return lines;
+  return out;
+}
+const rowsToLines = (rows) => rows.map(r => r.it.map(x => x[1]).join(" | "));
+async function pdfLines(buf) { return rowsToLines(await pdfRows(buf)); }
+
+// ── Листок зарплаты (תלוש, Хилан/Tama) → данные месяца ──
+const HE_MONTHS = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+function psNum(s) {
+  const t = String(s).trim(); if (!/^-?[\d,]+(\.\d+)?-?$/.test(t)) return null;
+  const neg = /-/.test(t); const v = parseFloat(t.replace(/[,-]/g, ""));
+  return isNaN(v) ? null : (neg ? -v : v);
+}
+function isPayslip(rows) { return rows.some(r => r.page === 1 && /תלוש שכר לחודש/.test(r.it.map(x => x[1]).join(" "))); }
+function parsePayslip(rows) {
+  const res = { ym: null, codes: [], rate: null, net: null, total: null, zk: null, tax: null };
+  const txt = (r) => r.it.map(x => x[1]).join(" ");
+  const numIn = (r, x0, x1) => { let v = null; r.it.forEach(([x, s]) => { if (x >= x0 && x <= x1) { const n = psNum(s); if (n !== null) v = n; } }); return v; };
+  let section = "pay";
+  rows.forEach((r, i) => {
+    if (r.page !== 1) return;
+    const t = txt(r);
+    if (!res.ym && /תלוש שכר לחודש/.test(t)) {
+      const mi = HE_MONTHS.findIndex(n => t.indexOf(n) >= 0), y = (t.match(/20\d\d/) || [])[0];
+      if (mi >= 0 && y) res.ym = y + "-" + String(mi + 1).padStart(2, "0");
+    }
+    if (res.net === null && /שכר נטו/.test(t)) res.net = numIn(r, 0, 100);
+    if (res.rate === null && r.it.some(([x, s]) => x < 220 && s.trim() === "שעה")) res.rate = numIn(r, 0, 100);
+    if (/זקיפות שכר/.test(t)) { if (/סה"כ/.test(t)) res.zk = numIn(r, 245, 300); section = "zk"; }
+    if (/קופות גמל/.test(t) && r.it.some(([x]) => x > 300)) section = "gemel";
+    if (res.total === null && /סה"כ תשלומים/.test(t) && !/בגין/.test(t) && !/תקופתיים/.test(t)) res.total = numIn(r, 180, 245);
+    if (res.tax === null && /מס הכנסה/.test(t) && /ביטוח לאומי/.test(t) && r.it.some(([x, s]) => x > 500 && /מס הכנסה/.test(s))) {
+      res.tax = 0;
+      for (let j = i + 1; j < Math.min(rows.length, i + 8); j++) if (numIn(rows[j], 180, 245) !== null) { res.tax = numIn(rows[j], 505, 580) || 0; break; }
+    }
+    if (section === "pay") {
+      const c = r.it.find(([x, s]) => x > 540 && /^\d{3}$/.test(s.trim()));
+      if (c && +c[1] >= 100) { const a = numIn(r, 180, 245); if (a !== null) res.codes.push({ code: +c[1], sum: a }); }
+    }
+  });
+  return res;
+}
+// Применить листок к месяцу: премия 141, бонус/вознаграждение 167, хавраа 160, прочие выплаты → разовые
+function applyPayslip(p) {
+  const ym = p.ym, sumOf = (f) => p.codes.filter(f).reduce((s, c) => s + c.sum, 0);
+  const set = (f, v) => { state[f] = state[f] || {}; if (v === undefined) delete state[f][ym]; else state[f][ym] = Math.round(v * 100) / 100; };
+  set("premiums", sumOf(c => c.code === 141));
+  const b167 = p.codes.filter(c => c.code === 167).map(c => c.sum);
+  let hb = b167.filter(v => v <= 1100).reduce((a, b) => a + b, 0), ref = b167.filter(v => v > 1100).reduce((a, b) => a + b, 0);
+  if (ref > 0 && !b167.some(v => v <= 1100)) {
+    const y = +ym.slice(0, 4), m = +ym.slice(5) - 1, mm = monthMetrics(y, m);
+    const def = mm ? calcHoursBonus(mm.hours) : 0; if (ref - def >= 0) { hb = def; ref -= def; }
+  }
+  set("hbM", hb); set("refM", ref > 0 ? ref : undefined);
+  const rec = sumOf(c => c.code === 160); set("recupM", rec ? rec : undefined);
+  set("extras", sumOf(c => c.code >= 140 && [141, 160, 167].indexOf(c.code) < 0));
+  if (p.rate) set("ratesM", p.rate);
+  if (p.zk !== null) set("zkifotM", p.zk);
+  if (p.tax !== null) set("taxM", p.tax);
+  if (p.net !== null) set("netM", p.net);
+  return { hb, ref };
 }
 // Тип смены по времени входа и числу часов (сверено с табелями май–октябрь 2026)
 function parseTimesheet(lines) {
@@ -2132,27 +2192,62 @@ const readBuf = (f) => new Promise((ok, fail) => { const rd = new FileReader(); 
 async function importTimesheetFile(files) {
   {
     try {
-      let lines = [];
-      for (const f of files) lines = lines.concat(await pdfLines(await readBuf(f)));
+      let lines = []; const slips = [];
+      for (const f of files) {
+        const rows = await pdfRows(await readBuf(f));
+        if (isPayslip(rows)) { const p = parsePayslip(rows); if (p.ym) slips.push(p); }
+        else lines = lines.concat(rowsToLines(rows));
+      }
       const r = parseTimesheet(lines);
       const yms = Object.keys(r.months).filter(ym => r.months[ym].n + r.months[ym].vac > 0).sort();
-      if (!yms.length) { alert("В файле не нашёл смен. Это точно табель часов (rper6)?"); return; }
+      if (!yms.length && !slips.length) { alert("Не нашёл в файлах ни смен, ни листка зарплаты. Нужен табель часов (rper6…) или листок (PaySlip…)."); return; }
+      if (yms.length) {
       const msg = yms.map(ym => { const x = r.months[ym]; return MONTHS_RU[+ym.slice(5) - 1] + " " + ym.slice(0, 4) + ": смен " + x.n + (x.tor ? " (торанут " + x.tor + ")" : "") + (x.vac ? ", отпуск " + x.vac + " дн." : ""); }).join("\n");
       if (!confirm("Нашёл в табеле:\n" + msg + (r.unknown.length ? "\nДни без оплаты или с неизвестной отметкой (поставлены выходными): " + r.unknown.join(", ") : "") + "\n\nЗаменить смены этих месяцев? Премии, заметки и настройки не изменятся.")) return;
       yms.forEach(ym => { Object.keys(state.shifts).forEach(k => { if (k.indexOf(ym) === 0) delete state.shifts[k]; }); });
       Object.keys(r.shifts).forEach(k => { if (yms.indexOf(k.slice(0, 7)) >= 0) state.shifts[k] = r.shifts[k]; });
       const f = yms[0]; state.year = +f.slice(0, 4); state.month = +f.slice(5) - 1; state.view = "calendar";
-      saveData(); render();
+      saveData();
+      }
+      if (slips.length) {
+        slips.sort((a, b) => a.ym < b.ym ? -1 : 1);
+        const nm = (ym) => MONTHS_RU[+ym.slice(5) - 1] + " " + ym.slice(0, 4);
+        const fm = (v) => Math.round(v).toLocaleString("ru-RU");
+        const desc = slips.map(p => { const g = (c) => p.codes.filter(x => x.code === c).reduce((s, x) => s + x.sum, 0);
+          return nm(p.ym) + ": нетто " + fm(p.net || 0) + " ₪, премия " + fm(g(141)) + ", бонус 167 " + fm(g(167)) + ", налог " + fm(p.tax || 0); }).join("\n");
+        if (confirm("Нашёл листки зарплаты:\n" + desc + "\n\nВнести эти цифры в приложение? Смены не изменятся.")) {
+          const report = [], fix = [];
+          slips.forEach(p => {
+            applyPayslip(p);
+            const y = +p.ym.slice(0, 4), m = +p.ym.slice(5) - 1, mm = monthMetrics(y, m);
+            if (!mm || !mm.shifts) { report.push(nm(p.ym) + ": смен в приложении нет — загрузи табель этого месяца, иначе часы и брутто не посчитаются."); return; }
+            if (p.total !== null) {
+              const d = p.total - mm.gross;
+              if (Math.abs(d) >= 20) { report.push(nm(p.ym) + ": брутто по листку " + fm(p.total) + " ₪, в приложении " + fm(mm.gross) + " ₪ (разница " + (d > 0 ? "+" : "") + fm(d) + ")."); fix.push([p.ym, d]); }
+              else report.push(nm(p.ym) + ": ✅ брутто совпало (" + fm(p.total) + " ₪).");
+            }
+          });
+          const l = slips[slips.length - 1].ym; state.year = +l.slice(0, 4); state.month = +l.slice(5) - 1; state.view = "salary";
+          saveData();
+          if (fix.length) {
+            if (confirm(report.join("\n\n") + "\n\nСмены в приложении проверены по табелю? Тогда разницу можно записать в «Разовые выплаты», и брутто с нетто совпадут с листком. Записать?")) {
+              fix.forEach(([ym, d]) => { state.extras[ym] = Math.round(((Number(state.extras[ym]) || 0) + d) * 100) / 100; });
+              saveData();
+            }
+          } else if (report.length) alert(report.join("\n\n"));
+        }
+      }
+      render();
     } catch (e) { alert("Не удалось прочитать PDF: " + e.message); }
   }
 }
 function renderTimesheetCard() {
   const card = el("div", { class:"settings-card" });
-  card.appendChild(el("div", { class:"title", text:"Заполнить месяц из табеля" }));
-  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-bottom:8px", text:"Выбери один или сразу несколько PDF табелей (rper6…). Месяц определяется сам по датам в файле. Смены, торануты (работа в выходной по графику) и дни отпуска проставятся сами. Премию и бонусы впиши из листка." }));
+  card.appendChild(el("div", { class:"title", text:"Загрузить табели и листки PDF" }));
+  card.appendChild(el("div", { style:"font-size:11px;color:#8391a7;margin-bottom:8px", text:"Можно выбрать сразу много файлов вперемешку: табели часов (rper6…) и листки зарплаты (PaySlip…). Месяц определяется сам по файлу. Из табеля — смены, торануты и отпуск. Из листка — премия 141, бонус 167, налог, хавраа, ставка, нетто. Лучше грузить табель и листок за месяц вместе." }));
   const inp = el("input", { type:"file", accept:"application/pdf,.pdf", multiple:"multiple", style:"display:none" });
   inp.addEventListener("change", () => { const fs = inp.files ? [...inp.files] : []; if (fs.length) importTimesheetFile(fs); inp.value = ""; });
-  const b = el("button", { class:"toggle-btn", style:"justify-content:center", text:"Выбрать табели PDF (можно несколько)" });
+  const b = el("button", { class:"toggle-btn", style:"justify-content:center", text:"📄 Выбрать PDF (можно несколько)" });
   b.addEventListener("click", () => inp.click());
   card.appendChild(inp); card.appendChild(b);
   return card;
@@ -2233,6 +2328,11 @@ function renderPayslipCard(netCalc) {
   head.appendChild(el("span", { text: (pn !== undefined ? (Math.abs(netCalc.net - pn) < 50 ? "✅ " : "⚠️ ") : "") + (open ? "▴" : "▾") }));
   head.addEventListener("click", () => { state.showPayslip = !open; render(); });
   card.appendChild(head);
+  const inp = el("input", { type:"file", accept:"application/pdf,.pdf", multiple:"multiple", style:"display:none" });
+  inp.addEventListener("change", () => { const fs = inp.files ? [...inp.files] : []; if (fs.length) importTimesheetFile(fs); inp.value = ""; });
+  const up = el("button", { class:"toggle-btn", style:"justify-content:center;margin-top:10px", text:"📄 Загрузить листок PDF" });
+  up.addEventListener("click", () => inp.click());
+  card.appendChild(inp); card.appendChild(up);
   if (pn !== undefined) card.appendChild(el("div", { class:"money", style:"font-size:12px;margin-top:6px;color:" + (Math.abs(netCalc.net - pn) < 50 ? "#34d399" : "#fbbf24"),
     text:"Сверка: приложение " + Math.round(netCalc.net).toLocaleString() + " ₪ · листок " + Math.round(pn).toLocaleString() + " ₪ · разница " + (Math.round(netCalc.net - pn) === 0 ? "0" : Math.round(netCalc.net - pn).toLocaleString()) + " ₪" }));
   if (!open) return card;
